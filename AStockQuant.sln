@@ -1,0 +1,54 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.9.12112.369
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{006A0F33-188D-46ED-8610-54744720AD31}"
+	ProjectSection(SolutionItems) = preProject
+		docs\AStockQuant 产品需求规格说明书.md = docs\AStockQuant 产品需求规格说明书.md
+		docs\AStockQuant 数据流程设计说明书.md = docs\AStockQuant 数据流程设计说明书.md
+		docs\AStockQuant 系统详细设计说明书（SDD）.md = docs\AStockQuant 系统详细设计说明书（SDD）.md
+		docs\AStockQuant_API接口设计说明书_V1.0.md = docs\AStockQuant_API接口设计说明书_V1.0.md
+		docs\AStockQuant_代码架构规范说明书_V1.0.md = docs\AStockQuant_代码架构规范说明书_V1.0.md
+		docs\AStockQuant_任务调度设计说明书_V1.0.md = docs\AStockQuant_任务调度设计说明书_V1.0.md
+		docs\AStockQuant_安全设计说明书_V1.0.md = docs\AStockQuant_安全设计说明书_V1.0.md
+		docs\AStockQuant_数据库设计说明书_DD_V1.0.md = docs\AStockQuant_数据库设计说明书_DD_V1.0.md
+		docs\AStockQuant_测试方案设计说明书_V1.0.md = docs\AStockQuant_测试方案设计说明书_V1.0.md
+		docs\AStockQuant_部署架构设计说明书_V1.0.md = docs\AStockQuant_部署架构设计说明书_V1.0.md
+		docs\AStockQuant_量化模型设计说明书_V1.0.md = docs\AStockQuant_量化模型设计说明书_V1.0.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "database", "database", "{398B5220-A460-48D1-BECE-A2023836FE78}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "init", "init", "{F16BA6C1-6F76-4577-9B96-181FB4AFBE16}"
+	ProjectSection(SolutionItems) = preProject
+		database\init\05_InsertInvestmentRules.sql = database\init\05_InsertInvestmentRules.sql
+		database\init\06_CreateViews.sql = database\init\06_CreateViews.sql
+		database\init\07_CreateStoredProcedures.sql = database\init\07_CreateStoredProcedures.sql
+		database\init\08_VerifyDatabase.sql = database\init\08_VerifyDatabase.sql
+		database\init\db_schema.sql = database\init\db_schema.sql
+		database\init\indexes.sql = database\init\indexes.sql
+		database\init\tb_1.sql = database\init\tb_1.sql
+		database\init\tb_2.sql = database\init\tb_2.sql
+		database\init\tb_3.sql = database\init\tb_3.sql
+		database\init\tb_4.sql = database\init\tb_4.sql
+		database\init\tb_5.sql = database\init\tb_5.sql
+		database\init\tb_6.sql = database\init\tb_6.sql
+		database\init\tb_7.sql = database\init\tb_7.sql
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F16BA6C1-6F76-4577-9B96-181FB4AFBE16} = {398B5220-A460-48D1-BECE-A2023836FE78}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CCC79978-653E-47BB-90B3-80800965E2FC}
+	EndGlobalSection
+EndGlobal

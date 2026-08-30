@@ -1,0 +1,17 @@
+﻿[*.cs]
+
+charset = utf-8
+
+indent_size = 2
+
+end_of_line = lf
+
+# CS8620: 由于引用类型的可为 null 性差异，实参不能用于形参。
+dotnet_diagnostic.CS8620.severity = none
+
+# CA1822: 将成员标记为 static
+dotnet_diagnostic.CA1822.severity = none
+
+dotnet_sort_system_directives_first = true
+
+csharp_style_namespace_declarations = file_scoped
