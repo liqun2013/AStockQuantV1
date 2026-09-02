@@ -8,4 +8,6 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<StockAnalysisService>();
 builder.Services.AddHostedService<StockScoreCalculateJob>();
+builder.Services.AddHostedService<MarketDataSyncJob>();
+builder.Services.AddHostedService<FinancialDataSyncJob>();
 await builder.Build().RunAsync();

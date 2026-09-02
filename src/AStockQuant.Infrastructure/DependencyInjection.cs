@@ -11,6 +11,11 @@ public static class DependencyInjection
     {
         var akToolsUrl = configuration?["AKTools:BaseUrl"] ?? "http://localhost:44802/";
         services.AddHttpClient<IAkToolsClient, AkToolsClient>(client => client.BaseAddress = new Uri(akToolsUrl));
-        return services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>().AddScoped<IStockRepository, StockRepository>();
+        return services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>()
+            .AddScoped<IStockRepository, StockRepository>()
+            .AddScoped<IMarketDataRepository, MarketDataRepository>()
+            .AddScoped<IMarketDataProvider, AkToolsMarketDataProvider>()
+            .AddScoped<IFinancialDataRepository, FinancialDataRepository>()
+            .AddScoped<IFinancialDataProvider, AkToolsFinancialDataProvider>();
     }
 }
