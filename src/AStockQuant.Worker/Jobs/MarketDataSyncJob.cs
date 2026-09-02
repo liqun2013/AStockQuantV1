@@ -1,4 +1,5 @@
 using AStockQuant.Application.Interfaces;
+using AStockQuant.Application.DTOs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -21,20 +22,30 @@ public sealed class MarketDataSyncJob(IServiceScopeFactory scopeFactory, ILogger
 				await using var scope = scopeFactory.CreateAsyncScope();
 				var provider = scope.ServiceProvider.GetRequiredService<IMarketDataProvider>();
 				var repository = scope.ServiceProvider.GetRequiredService<IMarketDataRepository>();
+				var logRepository = scope.ServiceProvider.GetRequiredService<IImportLogRepository>();
 				var stocks = await RetryAsync(() => provider.GetStocksAsync(cancellationToken), cancellationToken);
+				var stockLog = await logRepository.StartAsync("Stock", cancellationToken: cancellationToken);
 				var stockResult = await repository.UpsertStocksAsync(stocks, cancellationToken);
+				await logRepository.CompleteAsync(stockLog, stockResult, cancellationToken);
 				logger.LogInformation("Stock synchronization completed: requested={Requested}, succeeded={Succeeded}, failed={Failed}.", stockResult.Requested, stockResult.Succeeded, stockResult.Failed);
 
 				var endDate = DateOnly.FromDateTime(DateTime.UtcNow);
 				var startDate = endDate.AddDays(-30);
-				var total = 0;
+				var totalRequested = 0;
+				var totalSucceeded = 0;
+				var totalFailed = 0;
+				var priceLog = await logRepository.StartAsync("DailyPrice", cancellationToken: cancellationToken);
 				foreach (var stock in stocks)
 				{
 						var prices = await RetryAsync(() => provider.GetDailyPricesAsync(stock.StockCode, startDate, endDate, cancellationToken), cancellationToken);
 						var result = await repository.UpsertDailyPricesAsync(prices, cancellationToken);
-						total += result.Succeeded;
+						totalRequested += result.Requested;
+						totalSucceeded += result.Succeeded;
+						totalFailed += result.Failed;
 				}
-				logger.LogInformation("Daily price synchronization completed: succeeded={Succeeded}.", total);
+				var priceResult = new SyncResult("DailyPrice", totalRequested, totalSucceeded, 0, totalFailed);
+				await logRepository.CompleteAsync(priceLog, priceResult, cancellationToken);
+				logger.LogInformation("Daily price synchronization completed: succeeded={Succeeded}.", totalSucceeded);
 		}
 
 		private static async Task<T> RetryAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken)

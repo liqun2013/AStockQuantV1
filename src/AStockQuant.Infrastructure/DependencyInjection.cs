@@ -16,6 +16,8 @@ public static class DependencyInjection
             .AddScoped<IMarketDataRepository, MarketDataRepository>()
             .AddScoped<IMarketDataProvider, AkToolsMarketDataProvider>()
             .AddScoped<IFinancialDataRepository, FinancialDataRepository>()
+            .AddScoped<IFinancialIndicatorRepository, FinancialIndicatorRepository>()
+            .AddScoped<IImportLogRepository, ImportLogRepository>()
             .AddScoped<IFinancialDataProvider, AkToolsFinancialDataProvider>();
     }
 }

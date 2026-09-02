@@ -1,4 +1,5 @@
 using AStockQuant.Application.Interfaces;
+using AStockQuant.Application.DTOs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,9 @@ public sealed class FinancialDataSyncJob(IServiceScopeFactory scopeFactory, ILog
 				var marketRepository = scope.ServiceProvider.GetRequiredService<IStockRepository>();
 				var provider = scope.ServiceProvider.GetRequiredService<IFinancialDataProvider>();
 				var repository = scope.ServiceProvider.GetRequiredService<IFinancialDataRepository>();
+				var indicatorRepository = scope.ServiceProvider.GetRequiredService<IFinancialIndicatorRepository>();
+				var logRepository = scope.ServiceProvider.GetRequiredService<IImportLogRepository>();
+				var reportLog = await logRepository.StartAsync("FinancialReport", cancellationToken: cancellationToken);
 				var pageIndex = 1;
 				var processed = 0;
 				while (!cancellationToken.IsCancellationRequested)
@@ -37,6 +41,10 @@ public sealed class FinancialDataSyncJob(IServiceScopeFactory scopeFactory, ILog
 						if (pageIndex * 100 >= stocks.Total) break;
 						pageIndex++;
 				}
+				await logRepository.CompleteAsync(reportLog, new SyncResult("FinancialReport", processed, processed, 0, 0), cancellationToken);
+				var indicatorLog = await logRepository.StartAsync("FinancialIndicator", cancellationToken: cancellationToken);
+				var indicatorResult = await indicatorRepository.CalculateAndUpsertAsync(cancellationToken: cancellationToken);
+				await logRepository.CompleteAsync(indicatorLog, indicatorResult, cancellationToken);
 				logger.LogInformation("Financial synchronization completed: reports={Processed}.", processed);
 		}
 
