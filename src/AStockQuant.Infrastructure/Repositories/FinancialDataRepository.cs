@@ -63,7 +63,29 @@ VALUES (@ReportId, @OperatingCashFlow, @CapitalExpenditure, SYSUTCDATETIME());
 """;
 						foreach (var report in reports)
 						{
-								await connection.ExecuteAsync(new CommandDefinition(sql, report, transaction, cancellationToken: cancellationToken));
+								var parameters = new
+								{
+										report.StockCode,
+										ReportPeriod = report.ReportPeriod.ToDateTime(TimeOnly.MinValue),
+										report.ReportType,
+										PublishDate = report.PublishDate?.ToDateTime(TimeOnly.MinValue),
+										AnnouncementDate = report.AnnouncementDate?.ToDateTime(TimeOnly.MinValue),
+										report.Source,
+										report.Revenue,
+										report.OperatingCost,
+										report.GrossProfit,
+										report.OperatingProfit,
+										report.NetProfit,
+										report.EarningsPerShare,
+										report.TotalAssets,
+										report.TotalLiabilities,
+										report.TotalEquity,
+										report.CurrentAssets,
+										report.CurrentLiabilities,
+										report.OperatingCashFlow,
+										report.CapitalExpenditure
+								};
+								await connection.ExecuteAsync(new CommandDefinition(sql, parameters, transaction, cancellationToken: cancellationToken));
 								succeeded++;
 						}
 						transaction.Commit();

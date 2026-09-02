@@ -26,7 +26,7 @@ VALUES (@DataSourceId, @DataType, SYSUTCDATETIME(), 'Running', 0, 0, 0, 0, 0, 0,
 				const string sql = """
 UPDATE System.DataImportLog
 SET EndTime = SYSUTCDATETIME(),
-		Status = CASE WHEN @Failed = 0 THEN 'Succeeded' ELSE 'Failed' END,
+				Status = CASE WHEN @Failed = 0 THEN 'SUCCESS' ELSE 'FAILED' END,
 		RequestCount = @Requested,
 		SuccessCount = @Succeeded,
 		FailedCount = @Failed,

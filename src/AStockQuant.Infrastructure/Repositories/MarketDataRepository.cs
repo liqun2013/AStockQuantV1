@@ -48,7 +48,17 @@ VALUES (source.StockCode, source.StockName, source.ExchangeId, source.SecurityTy
 """;
 						foreach (var stock in stocks)
 						{
-								await connection.ExecuteAsync(new CommandDefinition(sql, stock, transaction, cancellationToken: cancellationToken));
+								var parameters = new
+								{
+										stock.StockCode,
+										stock.StockName,
+										stock.ExchangeCode,
+										stock.SecurityType,
+										stock.MarketType,
+										ListingDate = stock.ListingDate?.ToDateTime(TimeOnly.MinValue),
+										stock.IsActive
+								};
+								await connection.ExecuteAsync(new CommandDefinition(sql, parameters, transaction, cancellationToken: cancellationToken));
 								succeeded++;
 						}
 						transaction.Commit();
@@ -97,7 +107,26 @@ WHEN NOT MATCHED AND source.StockId IS NOT NULL THEN
 """;
 						foreach (var price in prices)
 						{
-								await connection.ExecuteAsync(new CommandDefinition(sql, price, transaction, cancellationToken: cancellationToken));
+								var parameters = new
+								{
+										price.StockCode,
+										TradeDate = price.TradeDate.ToDateTime(TimeOnly.MinValue),
+										price.OpenPrice,
+										price.HighPrice,
+										price.LowPrice,
+										price.ClosePrice,
+										price.PrevClosePrice,
+										price.ChangeAmount,
+										price.ChangePercent,
+										price.Volume,
+										price.Amount,
+										price.TurnoverRate,
+										price.TotalMarketCap,
+										price.FloatMarketCap,
+										price.IsSuspended,
+										price.Source
+								};
+								await connection.ExecuteAsync(new CommandDefinition(sql, parameters, transaction, cancellationToken: cancellationToken));
 								succeeded++;
 						}
 						transaction.Commit();
