@@ -1,0 +1,42 @@
+<Solution>
+  <Folder Name="/database/" />
+  <Folder Name="/database/init/">
+	<File Path="database\init\05_InsertInvestmentRules.sql" />
+	<File Path="database\init\06_CreateViews.sql" />
+	<File Path="database\init\07_CreateStoredProcedures.sql" />
+	<File Path="database\init\08_VerifyDatabase.sql" />
+	<File Path="database\init\db_schema.sql" />
+	<File Path="database\init\indexes.sql" />
+	<File Path="database\init\tb_1.sql" />
+	<File Path="database\init\tb_2.sql" />
+	<File Path="database\init\tb_3.sql" />
+	<File Path="database\init\tb_4.sql" />
+	<File Path="database\init\tb_5.sql" />
+	<File Path="database\init\tb_6.sql" />
+	<File Path="database\init\tb_7.sql" />
+  </Folder>
+  <Folder Name="/docs/">
+    <File Path=".editorconfig" />
+    <File Path="docs/AStockQuant 产品需求规格说明书.md" />
+    <File Path="docs/AStockQuant 数据流程设计说明书.md" />
+    <File Path="docs/AStockQuant 系统详细设计说明书（SDD）.md" />
+    <File Path="docs/AStockQuant_API接口设计说明书_V1.0.md" />
+    <File Path="docs/AStockQuant_代码架构规范说明书_V1.0.md" />
+    <File Path="docs/AStockQuant_任务调度设计说明书_V1.0.md" />
+    <File Path="docs/AStockQuant_安全设计说明书_V1.0.md" />
+    <File Path="docs/AStockQuant_数据库设计说明书_DD_V1.0.md" />
+    <File Path="docs/AStockQuant_测试方案设计说明书_V1.0.md" />
+    <File Path="docs/AStockQuant_部署架构设计说明书_V1.0.md" />
+    <File Path="docs/AStockQuant_量化模型设计说明书_V1.0.md" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests\AStockQuant.Application.Tests\AStockQuant.Application.Tests.csproj" />
+    <Project Path="tests\AStockQuant.Domain.Tests\AStockQuant.Domain.Tests.csproj" />
+  </Folder>
+	<Project Path="src\AStockQuant.Domain\AStockQuant.Domain.csproj" />
+	<Project Path="src\AStockQuant.Application\AStockQuant.Application.csproj" />
+	<Project Path="src\AStockQuant.Infrastructure\AStockQuant.Infrastructure.csproj" />
+	<Project Path="src\AStockQuant.WebApi\AStockQuant.WebApi.csproj" />
+	<Project Path="src\AStockQuant.Worker\AStockQuant.Worker.csproj" />
+
+</Solution>
