@@ -85,7 +85,7 @@ OUTPUT $action;
 						transaction.Commit();
 						var inserted = actions.Count(action => action.Equals("INSERT", StringComparison.OrdinalIgnoreCase));
 						var updated = actions.Count - inserted;
-						return new SyncResult("FinancialIndicator", actions.Count, actions.Count, 0, 0, $"Inserted={inserted}; Updated={updated}");
+						return new SyncResult("FinancialIndicator", actions.Count, actions.Count, 0, 0);
 				}
 				catch (Exception exception)
 				{

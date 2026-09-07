@@ -24,7 +24,18 @@ public sealed class DataSyncHostedJob(IServiceScopeFactory scopeFactory, IConfig
 				{
 						do
 						{
-								await RunOnceAsync(stoppingToken);
+							try
+							{
+									await RunOnceAsync(stoppingToken);
+							}
+							catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+							{
+									logger.LogInformation("Scheduled data synchronization was cancelled.");
+							}
+							catch (Exception exception)
+							{
+									logger.LogError(exception, "Scheduled data synchronization failed.");
+							}
 						} while (await timer.WaitForNextTickAsync(stoppingToken));
 				}
 				finally
@@ -41,7 +52,24 @@ public sealed class DataSyncHostedJob(IServiceScopeFactory scopeFactory, IConfig
 				var request = new SyncRequest(null, maxStocks, endDate.AddDays(-historyDays), endDate);
 				await using var scope = scopeFactory.CreateAsyncScope();
 				var service = scope.ServiceProvider.GetRequiredService<IDataSyncService>();
-				var result = await service.SynchronizeAsync(request, cancellationToken);
+			var result = await RetryAsync(
+					() => service.SynchronizeAsync(request, cancellationToken),
+					configuration.GetValue("Sync:RetryCount", 3),
+					cancellationToken);
 				logger.LogInformation("Scheduled synchronization completed: succeeded={Succeeded}, stocks={Stocks}, prices={Prices}, reports={Reports}, indicators={Indicators}, errors={Errors}.", result.Succeeded, result.StocksProcessed, result.PriceRowsProcessed, result.FinancialReportsProcessed, result.IndicatorRowsProcessed, result.Errors.Count);
+		}
+
+		private static async Task<SyncExecutionResult> RetryAsync(Func<Task<SyncExecutionResult>> action, int retryCount, CancellationToken cancellationToken)
+		{
+				var attempts = Math.Max(1, retryCount + 1);
+				for (var attempt = 1; ; attempt++)
+				{
+						try { return await action(); }
+						catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+						catch when (attempt < attempts)
+						{
+								await Task.Delay(TimeSpan.FromSeconds(Math.Min(attempt * 2, 30)), cancellationToken);
+						}
+				}
 		}
 }

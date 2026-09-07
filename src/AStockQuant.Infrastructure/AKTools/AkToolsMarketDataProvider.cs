@@ -25,31 +25,29 @@ public sealed class AkToolsMarketDataProvider(IAkToolsClient client) : IMarketDa
 		{
 				var parameters = new Dictionary<string, string?>
 				{
-						["symbol"] = stockCode,
-						["period"] = "daily",
+						["symbol"] = TxSymbol(stockCode),
 						["start_date"] = startDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
-						["end_date"] = endDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture),
-						["adjust"] = ""
+						["end_date"] = endDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture)
 				};
-				using var document = await client.GetAsync("stock_zh_a_hist", parameters, cancellationToken);
+				using var document = await client.GetAsync("stock_zh_a_hist_tx", parameters, cancellationToken);
 				var result = new List<DailyPriceImportDto>();
 				foreach (var row in Rows(document.RootElement))
 				{
-						var date = Date(row, "日期", "Date");
-						var close = Decimal(row, "收盘", "Close");
+						var date = Date(row, "日期", "Date", "date");
+						var close = Decimal(row, "收盘", "Close", "close");
 						if (!date.HasValue || !close.HasValue) continue;
 						result.Add(new DailyPriceImportDto(
 								stockCode,
 								date.Value,
-								Decimal(row, "开盘", "Open"),
-								Decimal(row, "最高", "High"),
-								Decimal(row, "最低", "Low"),
+								Decimal(row, "开盘", "Open", "open"),
+								Decimal(row, "最高", "High", "high"),
+								Decimal(row, "最低", "Low", "low"),
 								close,
 								Decimal(row, "昨收", "Previous Close"),
 								Decimal(row, "涨跌额", "Change"),
 								Decimal(row, "涨跌幅", "Change Percent"),
 								Long(row, "成交量", "Volume"),
-								Decimal(row, "成交额", "Amount"),
+								Decimal(row, "成交额", "Amount", "amount"),
 								Decimal(row, "换手率", "Turnover"),
 								null,
 								null,
@@ -67,6 +65,18 @@ public sealed class AkToolsMarketDataProvider(IAkToolsClient client) : IMarketDa
 		};
 
 		private static string Exchange(string code) => code.StartsWith('6') ? "SSE" : "SZSE";
+
+		private static string TxSymbol(string stockCode)
+		{
+				var code = stockCode.Trim();
+				if (code.StartsWith("sh", StringComparison.OrdinalIgnoreCase) || code.StartsWith("sz", StringComparison.OrdinalIgnoreCase))
+					return code.ToLowerInvariant();
+
+				if (code.EndsWith(".SH", StringComparison.OrdinalIgnoreCase) || code.EndsWith(".SZ", StringComparison.OrdinalIgnoreCase))
+					code = code[..^3];
+
+				return $"{(code.StartsWith('6') ? "sh" : "sz")}{code}";
+		}
 
 		private static string? String(JsonElement row, params string[] names)
 		{

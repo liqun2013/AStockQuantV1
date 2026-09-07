@@ -54,14 +54,34 @@ FROM Market.StockDailyPrice p INNER JOIN Basic.Stock s ON s.StockId = p.StockId
 WHERE s.StockCode = @Code AND (@StartDate IS NULL OR p.TradeDate >= @StartDate) AND (@EndDate IS NULL OR p.TradeDate <= @EndDate)
 ORDER BY p.TradeDate;
 """;
-        return (await connection.QueryAsync<DailyPriceDto>(new CommandDefinition(sql, new { Code = code, StartDate = startDate, EndDate = endDate }, cancellationToken: cancellationToken))).AsList();
+        var rows = await connection.QueryAsync(new CommandDefinition(sql, new
+        {
+            Code = code,
+            StartDate = startDate?.ToDateTime(TimeOnly.MinValue),
+            EndDate = endDate?.ToDateTime(TimeOnly.MinValue)
+        }, cancellationToken: cancellationToken));
+        return rows.Select(row => new DailyPriceDto(
+            (string)row.StockCode,
+            DateOnly.FromDateTime(Convert.ToDateTime(row.TradeDate)),
+            Convert.ToDecimal(row.OpenPrice),
+            Convert.ToDecimal(row.HighPrice),
+            Convert.ToDecimal(row.LowPrice),
+            Convert.ToDecimal(row.ClosePrice),
+            Convert.ToInt64(row.Volume))).ToArray();
     }
 
     public async Task<IReadOnlyList<InvestmentScoreDto>> GetRankingAsync(DateOnly scoreDate, decimal? minScore, CancellationToken cancellationToken)
     {
         using var connection = connectionFactory.CreateConnection();
         const string sql = "EXEC dbo.sp_GetStockRanking @ModelId, @ScoreDate, @TopN, @MinScore";
-        return (await connection.QueryAsync<InvestmentScoreDto>(new CommandDefinition(sql, new { ModelId = 1, ScoreDate = scoreDate, TopN = 100, MinScore = minScore }, cancellationToken: cancellationToken))).AsList();
+        var rows = await connection.QueryAsync(new CommandDefinition(sql, new
+        {
+            ModelId = 1,
+            ScoreDate = scoreDate.ToDateTime(TimeOnly.MinValue),
+            TopN = 100,
+            MinScore = minScore
+        }, cancellationToken: cancellationToken));
+        return rows.Select(ToInvestmentScore).ToArray();
     }
 
     public async Task<InvestmentScoreDto?> GetLatestScoreAsync(string code, CancellationToken cancellationToken)
@@ -80,7 +100,8 @@ INNER JOIN Basic.Stock s ON s.StockId = score.StockId
 WHERE s.StockCode = @Code
 ORDER BY score.ScoreDate DESC;
 """;
-        return await connection.QuerySingleOrDefaultAsync<InvestmentScoreDto>(new CommandDefinition(sql, new { Code = code }, cancellationToken: cancellationToken));
+        var row = await connection.QuerySingleOrDefaultAsync(new CommandDefinition(sql, new { Code = code }, cancellationToken: cancellationToken));
+        return row is null ? null : ToInvestmentScore(row);
     }
 
     public async Task<FinancialSnapshotDto?> GetFinancialSnapshotAsync(string code, DateOnly asOfDate, CancellationToken cancellationToken)
@@ -140,8 +161,38 @@ OUTER APPLY
 WHERE s.StockCode = @StockCode
   AND r.ReportId IS NOT NULL;
 """;
-        return await connection.QuerySingleOrDefaultAsync<FinancialSnapshotDto>(new CommandDefinition(sql, new { StockCode = code, AsOfDate = asOfDate }, cancellationToken: cancellationToken));
+        var row = await connection.QuerySingleOrDefaultAsync(new CommandDefinition(sql, new
+        {
+            StockCode = code,
+            AsOfDate = asOfDate.ToDateTime(TimeOnly.MinValue)
+        }, cancellationToken: cancellationToken));
+        return row is null ? null : new FinancialSnapshotDto(
+            (string)row.StockCode,
+            DateOnly.FromDateTime(Convert.ToDateTime(row.AsOfDate)),
+            Convert.ToDecimal(row.Roe),
+            Convert.ToDecimal(row.Roic),
+            Convert.ToDecimal(row.GrossMargin),
+            Convert.ToDecimal(row.NetMargin),
+            Convert.ToDecimal(row.OperatingCashFlowToNetProfit),
+            Convert.ToDecimal(row.DebtAssetRatio),
+            Convert.ToDecimal(row.CurrentRatio),
+            Convert.ToDecimal(row.PE),
+            Convert.ToDecimal(row.PB),
+            Convert.ToDecimal(row.Eps),
+            Convert.ToDecimal(row.Bvps),
+            Convert.ToDecimal(row.MarketPrice),
+            Convert.ToDecimal(row.RevenueGrowth3Y),
+            Convert.ToDecimal(row.ProfitGrowth3Y),
+            Convert.ToDecimal(row.ResearchExpenseRatio));
     }
+
+    private static InvestmentScoreDto ToInvestmentScore(dynamic row) => new(
+        (string)row.StockCode,
+        DateOnly.FromDateTime(Convert.ToDateTime(row.ScoreDate)),
+        Convert.ToDecimal(row.BuffettScore),
+        Convert.ToDecimal(row.GrahamScore),
+        Convert.ToDecimal(row.FisherScore),
+        Convert.ToDecimal(row.FinalScore));
 
     public async Task SaveInvestmentScoreAsync(InvestmentScoreDto score, CancellationToken cancellationToken)
     {
@@ -149,11 +200,19 @@ WHERE s.StockCode = @StockCode
         const string sql = """
 MERGE Quant.InvestmentScore AS target
 USING (SELECT StockId FROM Basic.Stock WHERE StockCode = @StockCode) AS source
-ON target.StockId = source.StockId AND target.ScoreDate = @ScoreDate
-WHEN MATCHED THEN UPDATE SET BuffettScore=@BuffettScore, GrahamScore=@GrahamScore, FisherScore=@FisherScore, BaseScore=@FinalScore, FinalScore=@FinalScore, UpdatedTime=SYSUTCDATETIME()
-WHEN NOT MATCHED THEN INSERT (StockId, ModelId, ScoreDate, BuffettScore, GrahamScore, FisherScore, ValuationScore, IndustryScore, RiskAdjustment, BaseScore, FinalScore, CreatedTime, UpdatedTime)
-VALUES (source.StockId, 1, @ScoreDate, @BuffettScore, @GrahamScore, @FisherScore, @GrahamScore, 0, 0, @FinalScore, @FinalScore, SYSUTCDATETIME(), SYSUTCDATETIME());
+ON target.StockId = source.StockId AND target.ModelId = 1 AND target.ScoreDate = @ScoreDate
+WHEN MATCHED THEN UPDATE SET BuffettScore=@BuffettScore, GrahamScore=@GrahamScore, FisherScore=@FisherScore, BaseScore=@FinalScore, FinalScore=@FinalScore
+WHEN NOT MATCHED THEN INSERT (StockId, ModelId, ScoreDate, BuffettScore, GrahamScore, FisherScore, ValuationScore, IndustryScore, RiskAdjustment, BaseScore, FinalScore, DataAsOfDate, CreatedTime)
+VALUES (source.StockId, 1, @ScoreDate, @BuffettScore, @GrahamScore, @FisherScore, @GrahamScore, 0, 0, @FinalScore, @FinalScore, @ScoreDate, SYSUTCDATETIME());
 """;
-        await connection.ExecuteAsync(new CommandDefinition(sql, score, cancellationToken: cancellationToken));
+        await connection.ExecuteAsync(new CommandDefinition(sql, new
+        {
+            score.StockCode,
+            ScoreDate = score.ScoreDate.ToDateTime(TimeOnly.MinValue),
+            score.BuffettScore,
+            score.GrahamScore,
+            score.FisherScore,
+            score.FinalScore
+        }, cancellationToken: cancellationToken));
     }
 }

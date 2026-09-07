@@ -67,7 +67,7 @@ public sealed class DataSyncService(
 						handle = await importLogRepository.StartAsync(dataType, cancellationToken: cancellationToken);
 						var result = await action(values);
 						await importLogRepository.CompleteAsync(handle, result, cancellationToken);
-						if (result.Error is not null) errors.Add($"{dataType}: {result.Error}");
+						if (result.Failed > 0 && result.Error is not null) errors.Add($"{dataType}: {result.Error}");
 						return result;
 				}
 				catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

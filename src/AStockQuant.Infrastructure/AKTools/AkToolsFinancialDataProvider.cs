@@ -31,17 +31,40 @@ public sealed class AkToolsFinancialDataProvider(IAkToolsClient client) : IFinan
 						var reportDate = Date(row, "REPORT_DATE", "报告期");
 						if (!reportDate.HasValue) continue;
 						var report = reports.TryGetValue(reportDate.Value, out var existing) ? existing : reports[reportDate.Value] = new ReportBuilder(reportDate.Value);
-						report.ReportType = Text(row, "REPORT_TYPE", "报告类型") ?? report.ReportType;
-						report.PublishDate = Date(row, "ANN_DATE", "公告日期", "PUBLISH_DATE") ?? report.PublishDate;
+						report.ReportType = ReportType(Text(row, "REPORT_TYPE", "报告类型"), reportDate.Value);
+						report.PublishDate = Date(row, "ANN_DATE", "NOTICE_DATE", "公告日期", "PUBLISH_DATE") ?? report.PublishDate;
 						mapper(report, row);
 				}
+			}
+
+		private static string ReportType(string? value, DateOnly reportPeriod)
+		{
+				if (string.Equals(value, "Q1", StringComparison.OrdinalIgnoreCase) || value?.Contains("一季") == true)
+					return "Q1";
+				if (string.Equals(value, "Q2", StringComparison.OrdinalIgnoreCase) || value?.Contains("中报") == true || value?.Contains("半年") == true)
+					return "Q2";
+				if (string.Equals(value, "Q3", StringComparison.OrdinalIgnoreCase) || value?.Contains("三季") == true)
+					return "Q3";
+				if (string.Equals(value, "YEAR", StringComparison.OrdinalIgnoreCase) || value?.Contains("年报") == true)
+					return "YEAR";
+
+				return reportPeriod.Month switch
+				{
+						3 => "Q1",
+						6 => "Q2",
+						9 => "Q3",
+						12 => "YEAR",
+						_ => "YEAR"
+				};
 		}
 
 		private static void Profit(ReportBuilder report, JsonElement row)
 		{
 				report.Revenue ??= Number(row, "OPERATE_INCOME", "营业收入", "TOTAL_OPERATE_INCOME");
-				report.OperatingCost ??= Number(row, "OPERATE_COST", "营业成本");
-				report.GrossProfit ??= Number(row, "OPERATE_INCOME", "营业收入") - Number(row, "OPERATE_COST", "营业成本");
+				report.OperatingCost ??= Number(row, "OPERATE_COST", "TOTAL_OPERATE_COST", "营业成本");
+				var revenue = Number(row, "OPERATE_INCOME", "TOTAL_OPERATE_INCOME", "营业收入");
+				var operatingCost = Number(row, "OPERATE_COST", "TOTAL_OPERATE_COST", "营业成本");
+				report.GrossProfit ??= revenue.HasValue && operatingCost.HasValue ? revenue.Value - operatingCost.Value : null;
 				report.OperatingProfit ??= Number(row, "OPERATE_PROFIT", "营业利润");
 				report.NetProfit ??= Number(row, "NETPROFIT", "净利润", "NET_PROFIT");
 				report.EarningsPerShare ??= Number(row, "BASIC_EPS", "基本每股收益", "EPS");
@@ -53,7 +76,7 @@ public sealed class AkToolsFinancialDataProvider(IAkToolsClient client) : IFinan
 				report.TotalLiabilities ??= Number(row, "TOTAL_LIABILITIES", "负债合计");
 				report.TotalEquity ??= Number(row, "TOTAL_EQUITY", "所有者权益合计");
 				report.CurrentAssets ??= Number(row, "TOTAL_CURRENT_ASSETS", "流动资产合计");
-				report.CurrentLiabilities ??= Number(row, "TOTAL_CURRENT_LIAB", "流动负债合计");
+				report.CurrentLiabilities ??= Number(row, "TOTAL_CURRENT_LIAB", "TOTAL_CURRENT_LIABILITIES", "流动负债合计");
 		}
 
 		private static void CashFlow(ReportBuilder report, JsonElement row)
@@ -86,7 +109,12 @@ public sealed class AkToolsFinancialDataProvider(IAkToolsClient client) : IFinan
 		private static DateOnly? Date(JsonElement row, params string[] names)
 		{
 				var text = Text(row, names);
-				return DateOnly.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var value) ? value : null;
+				if (string.IsNullOrWhiteSpace(text)) return null;
+				return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var dateTime)
+						? DateOnly.FromDateTime(dateTime)
+						: DateOnly.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateOnly)
+							? dateOnly
+							: null;
 		}
 
 		private sealed class ReportBuilder(DateOnly reportPeriod)
