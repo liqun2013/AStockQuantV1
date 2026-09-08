@@ -2,12 +2,13 @@ using AStockQuant.Application.DTOs;
 using AStockQuant.Application.Interfaces;
 using AStockQuant.Infrastructure.Persistence;
 using Dapper;
+using System.Text.Json;
 
 namespace AStockQuant.Infrastructure.Repositories;
 
 public sealed class FinancialIndicatorRepository(ISqlConnectionFactory connectionFactory) : IFinancialIndicatorRepository
 {
-		public async Task<SyncResult> CalculateAndUpsertAsync(string? stockCode = null, CancellationToken cancellationToken = default)
+		public async Task<SyncResult> CalculateAndUpsertAsync(IReadOnlyCollection<string> stockCodes, CancellationToken cancellationToken = default)
 		{
 				using var connection = connectionFactory.CreateConnection();
 				connection.Open();
@@ -38,7 +39,7 @@ public sealed class FinancialIndicatorRepository(ISqlConnectionFactory connectio
 		LEFT JOIN Finance.IncomeStatement inc ON inc.ReportId = r.ReportId
 		LEFT JOIN Finance.BalanceSheet bs ON bs.ReportId = r.ReportId
 		LEFT JOIN Finance.CashFlowStatement cf ON cf.ReportId = r.ReportId
-		WHERE (@StockCode IS NULL OR s.StockCode = @StockCode)
+		WHERE s.StockCode IN (SELECT [value] FROM OPENJSON(@StockCodesJson))
 ), PreviousData AS
 (
 		SELECT
@@ -81,7 +82,7 @@ VALUES
 		(source.StockId, source.ReportId, source.ROE, source.ROIC, source.GrossMargin, source.OperatingMargin, source.NetMargin, source.DebtRatio, source.CurrentRatio, source.RevenueGrowth, source.NetProfitGrowth, source.OperatingCashFlowToNetProfit, source.FreeCashFlow, source.FreeCashFlowMargin, SYSUTCDATETIME())
 OUTPUT $action;
 """;
-						var actions = (await connection.QueryAsync<string>(new CommandDefinition(sql, new { StockCode = stockCode }, transaction, cancellationToken: cancellationToken))).AsList();
+						var actions = (await connection.QueryAsync<string>(new CommandDefinition(sql, new { StockCodesJson = JsonSerializer.Serialize(stockCodes) }, transaction, cancellationToken: cancellationToken))).AsList();
 						transaction.Commit();
 						var inserted = actions.Count(action => action.Equals("INSERT", StringComparison.OrdinalIgnoreCase));
 						var updated = actions.Count - inserted;

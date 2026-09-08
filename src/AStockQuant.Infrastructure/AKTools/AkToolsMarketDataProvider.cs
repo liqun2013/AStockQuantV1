@@ -21,6 +21,21 @@ public sealed class AkToolsMarketDataProvider(IAkToolsClient client) : IMarketDa
 				return result;
 		}
 
+		public async Task<IReadOnlyList<DailyPriceImportDto>> GetDailyPricesAsync(IReadOnlyCollection<string> stockCodes, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default)
+		{
+				var results = new System.Collections.Concurrent.ConcurrentBag<DailyPriceImportDto>();
+				await Parallel.ForEachAsync(stockCodes.Distinct(StringComparer.OrdinalIgnoreCase), new ParallelOptions
+				{
+						MaxDegreeOfParallelism = 8,
+						CancellationToken = cancellationToken
+				}, async (stockCode, token) =>
+				{
+						var prices = await GetDailyPricesAsync(stockCode, startDate, endDate, token);
+						foreach (var price in prices) results.Add(price);
+				});
+				return results.ToArray();
+		}
+
 		public async Task<IReadOnlyList<DailyPriceImportDto>> GetDailyPricesAsync(string stockCode, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default)
 		{
 				var parameters = new Dictionary<string, string?>

@@ -2,6 +2,7 @@ using AStockQuant.Application.DTOs;
 using AStockQuant.Application.Interfaces;
 using AStockQuant.Infrastructure.Persistence;
 using Dapper;
+using System.Text.Json;
 
 namespace AStockQuant.Infrastructure.Repositories;
 
@@ -17,7 +18,11 @@ public sealed class MarketDataRepository(ISqlConnectionFactory connectionFactory
 				{
 						const string sql = """
 MERGE Basic.Exchange AS target
-USING (SELECT @ExchangeCode AS ExchangeCode) AS source
+USING
+(
+		SELECT DISTINCT ExchangeCode
+		FROM OPENJSON(@StocksJson) WITH (ExchangeCode VARCHAR(20) '$.ExchangeCode')
+) AS source
 ON target.ExchangeCode = source.ExchangeCode
 WHEN NOT MATCHED THEN INSERT (ExchangeCode, ExchangeName, CreatedTime)
 VALUES (source.ExchangeCode, source.ExchangeCode, SYSUTCDATETIME());
@@ -26,13 +31,15 @@ MERGE Basic.Stock AS target
 USING
 (
 		SELECT
-				@StockCode AS StockCode,
-				@StockName AS StockName,
-				(SELECT ExchangeId FROM Basic.Exchange WHERE ExchangeCode = @ExchangeCode) AS ExchangeId,
-				@SecurityType AS SecurityType,
-				@MarketType AS MarketType,
-				@ListingDate AS ListingDate,
-				@IsActive AS IsActive
+				source.StockCode, source.StockName, exchange.ExchangeId, source.SecurityType,
+				source.MarketType, source.ListingDate, source.IsActive
+		FROM OPENJSON(@StocksJson) WITH
+		(
+			StockCode VARCHAR(20) '$.StockCode', StockName NVARCHAR(100) '$.StockName',
+			ExchangeCode VARCHAR(20) '$.ExchangeCode', SecurityType VARCHAR(50) '$.SecurityType',
+			MarketType VARCHAR(50) '$.MarketType', ListingDate DATE '$.ListingDate', IsActive BIT '$.IsActive'
+		) AS source
+		INNER JOIN Basic.Exchange exchange ON exchange.ExchangeCode = source.ExchangeCode
 ) AS source
 ON target.StockCode = source.StockCode
 WHEN MATCHED THEN UPDATE SET
@@ -46,21 +53,8 @@ WHEN MATCHED THEN UPDATE SET
 WHEN NOT MATCHED THEN INSERT (StockCode, StockName, ExchangeId, SecurityType, MarketType, ListingDate, IsActive, CreatedTime, UpdatedTime)
 VALUES (source.StockCode, source.StockName, source.ExchangeId, source.SecurityType, source.MarketType, source.ListingDate, source.IsActive, SYSUTCDATETIME(), SYSUTCDATETIME());
 """;
-						foreach (var stock in stocks)
-						{
-								var parameters = new
-								{
-										stock.StockCode,
-										stock.StockName,
-										stock.ExchangeCode,
-										stock.SecurityType,
-										stock.MarketType,
-										ListingDate = stock.ListingDate?.ToDateTime(TimeOnly.MinValue),
-										stock.IsActive
-								};
-								await connection.ExecuteAsync(new CommandDefinition(sql, parameters, transaction, cancellationToken: cancellationToken));
-								succeeded++;
-						}
+						await connection.ExecuteAsync(new CommandDefinition(sql, new { StocksJson = JsonSerializer.Serialize(stocks) }, transaction, cancellationToken: cancellationToken));
+						succeeded = stocks.Count;
 						transaction.Commit();
 						return new SyncResult("Stock", stocks.Count, succeeded, 0, stocks.Count - succeeded);
 				}
@@ -84,14 +78,15 @@ MERGE Market.StockDailyPrice AS target
 USING
 (
 		SELECT
-				(SELECT StockId FROM Basic.Stock WHERE StockCode = @StockCode) AS StockId,
-				@TradeDate AS TradeDate,
-				@OpenPrice AS OpenPrice, @HighPrice AS HighPrice, @LowPrice AS LowPrice,
-				@ClosePrice AS ClosePrice, @PrevClosePrice AS PrevClosePrice,
-				@ChangeAmount AS ChangeAmount, @ChangePercent AS ChangePercent,
-				@Volume AS Volume, @Amount AS Amount, @TurnoverRate AS TurnoverRate,
-				@TotalMarketCap AS TotalMarketCap, @FloatMarketCap AS FloatMarketCap,
-				@IsSuspended AS IsSuspended, @Source AS Source
+				stock.StockId, source.TradeDate, source.OpenPrice, source.HighPrice, source.LowPrice,
+				source.ClosePrice, source.PrevClosePrice, source.ChangeAmount, source.ChangePercent,
+				source.Volume, source.Amount, source.TurnoverRate, source.TotalMarketCap, source.FloatMarketCap,
+				source.IsSuspended, source.Source
+		FROM OPENJSON(@PricesJson) WITH
+		(
+			StockCode VARCHAR(20) '$.StockCode', TradeDate DATE '$.TradeDate', OpenPrice DECIMAL(24,8) '$.OpenPrice', HighPrice DECIMAL(24,8) '$.HighPrice', LowPrice DECIMAL(24,8) '$.LowPrice', ClosePrice DECIMAL(24,8) '$.ClosePrice', PrevClosePrice DECIMAL(24,8) '$.PrevClosePrice', ChangeAmount DECIMAL(24,8) '$.ChangeAmount', ChangePercent DECIMAL(24,8) '$.ChangePercent', Volume BIGINT '$.Volume', Amount DECIMAL(24,8) '$.Amount', TurnoverRate DECIMAL(24,8) '$.TurnoverRate', TotalMarketCap DECIMAL(24,8) '$.TotalMarketCap', FloatMarketCap DECIMAL(24,8) '$.FloatMarketCap', IsSuspended BIT '$.IsSuspended', Source VARCHAR(50) '$.Source'
+		) AS source
+		INNER JOIN Basic.Stock stock ON stock.StockCode = source.StockCode
 ) AS source
 ON target.StockId = source.StockId AND target.TradeDate = source.TradeDate
 WHEN MATCHED THEN UPDATE SET
@@ -105,30 +100,8 @@ WHEN NOT MATCHED AND source.StockId IS NOT NULL THEN
 		INSERT (StockId, TradeDate, OpenPrice, HighPrice, LowPrice, ClosePrice, PrevClosePrice, ChangeAmount, ChangePercent, Volume, Amount, TurnoverRate, TotalMarketCap, FloatMarketCap, IsSuspended, Source, CreatedTime)
 		VALUES (source.StockId, source.TradeDate, source.OpenPrice, source.HighPrice, source.LowPrice, source.ClosePrice, source.PrevClosePrice, source.ChangeAmount, source.ChangePercent, source.Volume, source.Amount, source.TurnoverRate, source.TotalMarketCap, source.FloatMarketCap, source.IsSuspended, source.Source, SYSUTCDATETIME());
 """;
-						foreach (var price in prices)
-						{
-								var parameters = new
-								{
-										price.StockCode,
-										TradeDate = price.TradeDate.ToDateTime(TimeOnly.MinValue),
-										price.OpenPrice,
-										price.HighPrice,
-										price.LowPrice,
-										price.ClosePrice,
-										price.PrevClosePrice,
-										price.ChangeAmount,
-										price.ChangePercent,
-										price.Volume,
-										price.Amount,
-										price.TurnoverRate,
-										price.TotalMarketCap,
-										price.FloatMarketCap,
-										price.IsSuspended,
-										price.Source
-								};
-								await connection.ExecuteAsync(new CommandDefinition(sql, parameters, transaction, cancellationToken: cancellationToken));
-								succeeded++;
-						}
+						await connection.ExecuteAsync(new CommandDefinition(sql, new { PricesJson = JsonSerializer.Serialize(prices) }, transaction, cancellationToken: cancellationToken));
+						succeeded = prices.Count;
 						transaction.Commit();
 						return new SyncResult("DailyPrice", prices.Count, succeeded, 0, prices.Count - succeeded);
 				}

@@ -26,37 +26,16 @@ public sealed class DataSyncService(
 						return new SyncExecutionResult(false, 0, 0, 0, 0, [$"Stock '{request.StockCode}' was not found in AKTools."]);
 
 				var stockResult = await RunLoggedAsync("Stock", selectedStocks, values => marketDataRepository.UpsertStocksAsync(values, cancellationToken), errors, cancellationToken);
-				var priceRows = 0;
-				var reportRows = 0;
-				var indicatorRows = 0;
+				var stockCodes = selectedStocks.Select(stock => stock.StockCode).ToArray();
+				var prices = await marketDataProvider.GetDailyPricesAsync(stockCodes, startDate, endDate, cancellationToken);
+				var priceResult = await RunLoggedAsync("DailyPrice", prices, values => marketDataRepository.UpsertDailyPricesAsync(values, cancellationToken), errors, cancellationToken);
 
-				foreach (var stock in selectedStocks)
-				{
-						cancellationToken.ThrowIfCancellationRequested();
-						try
-						{
-								var prices = await marketDataProvider.GetDailyPricesAsync(stock.StockCode, startDate, endDate, cancellationToken);
-								var priceResult = await RunLoggedAsync("DailyPrice", prices, values => marketDataRepository.UpsertDailyPricesAsync(values, cancellationToken), errors, cancellationToken);
-								priceRows += priceResult.Succeeded;
+				var reports = await financialDataProvider.GetReportsAsync(stockCodes, cancellationToken);
+				var reportResult = await RunLoggedAsync("FinancialReport", reports, values => financialDataRepository.UpsertReportsAsync(values, cancellationToken), errors, cancellationToken);
 
-								var reports = await financialDataProvider.GetReportsAsync(stock.StockCode, cancellationToken);
-								var reportResult = await RunLoggedAsync("FinancialReport", reports, values => financialDataRepository.UpsertReportsAsync(values, cancellationToken), errors, cancellationToken);
-								reportRows += reportResult.Succeeded;
+				var indicatorResult = await RunLoggedAsync("FinancialIndicator", stockCodes, values => financialIndicatorRepository.CalculateAndUpsertAsync(values, cancellationToken), errors, cancellationToken);
 
-								var indicatorResult = await RunLoggedAsync("FinancialIndicator", Array.Empty<StockImportDto>(), _ => financialIndicatorRepository.CalculateAndUpsertAsync(stock.StockCode, cancellationToken), errors, cancellationToken);
-								indicatorRows += indicatorResult.Succeeded;
-						}
-						catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-						{
-								throw;
-						}
-						catch (Exception exception)
-						{
-								errors.Add($"{stock.StockCode}: {exception.Message}");
-						}
-				}
-
-				return new SyncExecutionResult(errors.Count == 0, selectedStocks.Length, priceRows, reportRows, indicatorRows, errors);
+				return new SyncExecutionResult(errors.Count == 0, selectedStocks.Length, priceResult.Succeeded, reportResult.Succeeded, indicatorResult.Succeeded, errors);
 		}
 
 		private async Task<SyncResult> RunLoggedAsync<T>(string dataType, IReadOnlyCollection<T> values, Func<IReadOnlyCollection<T>, Task<SyncResult>> action, List<string> errors, CancellationToken cancellationToken)

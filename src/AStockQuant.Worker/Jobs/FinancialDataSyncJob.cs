@@ -43,7 +43,16 @@ public sealed class FinancialDataSyncJob(IServiceScopeFactory scopeFactory, ILog
 				}
 				await logRepository.CompleteAsync(reportLog, new SyncResult("FinancialReport", processed, processed, 0, 0), cancellationToken);
 				var indicatorLog = await logRepository.StartAsync("FinancialIndicator", cancellationToken: cancellationToken);
-				var indicatorResult = await indicatorRepository.CalculateAndUpsertAsync(cancellationToken: cancellationToken);
+				var indicatorCodes = new List<string>();
+				pageIndex = 1;
+				while (!cancellationToken.IsCancellationRequested)
+				{
+						var stocks = await marketRepository.GetStocksAsync(pageIndex, 100, null, null, cancellationToken);
+						indicatorCodes.AddRange(stocks.Items.Select(stock => stock.Code));
+						if (stocks.Items.Count == 0 || pageIndex * 100 >= stocks.Total) break;
+						pageIndex++;
+				}
+				var indicatorResult = await indicatorRepository.CalculateAndUpsertAsync(indicatorCodes, cancellationToken);
 				await logRepository.CompleteAsync(indicatorLog, indicatorResult, cancellationToken);
 				logger.LogInformation("Financial synchronization completed: reports={Processed}.", processed);
 		}

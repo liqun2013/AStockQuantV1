@@ -23,6 +23,21 @@ public sealed class AkToolsFinancialDataProvider(IAkToolsClient client) : IFinan
 						.ToArray();
 		}
 
+		public async Task<IReadOnlyList<FinancialReportImportDto>> GetReportsAsync(IReadOnlyCollection<string> stockCodes, CancellationToken cancellationToken = default)
+		{
+				var results = new System.Collections.Concurrent.ConcurrentBag<FinancialReportImportDto>();
+				await Parallel.ForEachAsync(stockCodes.Distinct(StringComparer.OrdinalIgnoreCase), new ParallelOptions
+				{
+						MaxDegreeOfParallelism = 8,
+						CancellationToken = cancellationToken
+				}, async (stockCode, token) =>
+				{
+						var reports = await GetReportsAsync(stockCode, token);
+						foreach (var report in reports) results.Add(report);
+				});
+				return results.ToArray();
+		}
+
 		private async Task LoadAsync(string interfaceName, string symbol, Dictionary<DateOnly, ReportBuilder> reports, Action<ReportBuilder, JsonElement> mapper, CancellationToken cancellationToken)
 		{
 				using var document = await client.GetAsync(interfaceName, new Dictionary<string, string?> { ["symbol"] = symbol }, cancellationToken);

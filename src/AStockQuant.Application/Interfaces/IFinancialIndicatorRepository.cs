@@ -4,5 +4,5 @@ namespace AStockQuant.Application.Interfaces;
 
 public interface IFinancialIndicatorRepository
 {
-		Task<SyncResult> CalculateAndUpsertAsync(string? stockCode = null, CancellationToken cancellationToken = default);
+		Task<SyncResult> CalculateAndUpsertAsync(IReadOnlyCollection<string> stockCodes, CancellationToken cancellationToken = default);
 }
