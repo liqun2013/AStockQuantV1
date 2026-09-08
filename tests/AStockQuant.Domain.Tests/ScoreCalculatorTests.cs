@@ -18,8 +18,25 @@ public sealed class ScoreCalculatorTests
     [Fact]
     public void CompositeCalculator_UsesDeterministicWeightedScore()
     {
-        var score = new CompositeScoreCalculator().Calculate(CreateExcellentSnapshot());
-        score.FinalScore.Should().Be(Math.Round(score.BuffettScore * 0.40m + score.GrahamScore * 0.20m + score.FisherScore * 0.40m, 4, MidpointRounding.AwayFromZero));
+        var weights = new CompositeScoreWeights(0.40m, 0.20m, 0.40m);
+        var score = new CompositeScoreCalculator().Calculate(CreateExcellentSnapshot(), weights);
+        score.FinalScore.Should().Be(Math.Round(score.BuffettScore * weights.Buffett + score.GrahamScore * weights.Graham + score.FisherScore * weights.Fisher, 4, MidpointRounding.AwayFromZero));
+    }
+
+    [Fact]
+    public void CompositeScoreWeights_RejectsWeightsThatDoNotSumToOne()
+    {
+        var action = () => new CompositeScoreWeights(0.40m, 0.20m, 0.30m);
+
+        action.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void CompositeScoreWeights_RejectsNegativeWeights()
+    {
+        var action = () => new CompositeScoreWeights(-0.10m, 0.20m, 0.90m);
+
+        action.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]
@@ -67,6 +84,22 @@ public sealed class ScoreCalculatorTests
 
         result.Score.Should().Be(100m);
         result.Components["B01"].Should().Be(100m);
+    }
+
+    [Fact]
+    public void RuleBasedScoreCalculator_UsesIndicatorWeights()
+    {
+        var rules = new[]
+        {
+            new InvestmentIndicatorRule("B01", 3m, 10m, null, null, 10m, 1),
+            new InvestmentIndicatorRule("B02", 1m, 10m, null, null, 0m, 1)
+        };
+
+        var result = new RuleBasedScoreCalculator().Calculate(
+            new Dictionary<string, decimal?> { ["B01"] = 1m, ["B02"] = 1m },
+            rules);
+
+        result.Score.Should().Be(75m);
     }
 
     private static FinancialSnapshot CreateExcellentSnapshot() => new("600519", new DateOnly(2026, 8, 26), 25m, 18m, 55m, 30m, 1.2m, 25m, 2.5m, 15m, 1.2m, 2m, 12m, 18m, 25m, 22m, 10m);

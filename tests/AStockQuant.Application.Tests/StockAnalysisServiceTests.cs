@@ -12,7 +12,7 @@ public sealed class StockAnalysisServiceTests
     public async Task GetStocksAsync_ClampsInvalidPaging()
     {
         var repository = new InMemoryStockRepository();
-        var service = new StockAnalysisService(repository);
+        var service = new StockAnalysisService(repository, new InMemoryScoreModelRuleRepository());
         await service.GetStocksAsync(-1, 999);
         repository.LastPageIndex.Should().Be(1);
         repository.LastPageSize.Should().Be(200);
@@ -22,7 +22,7 @@ public sealed class StockAnalysisServiceTests
     public async Task CalculateAndSaveScoreAsync_SavesCalculatedScore_WhenSnapshotExists()
     {
         var repository = new InMemoryStockRepository();
-        var service = new StockAnalysisService(repository);
+        var service = new StockAnalysisService(repository, new InMemoryScoreModelRuleRepository());
         var score = await service.CalculateAndSaveScoreAsync("600519", new DateOnly(2026, 8, 26));
         score.Should().NotBeNull();
         repository.SavedScore.Should().Be(score);
@@ -40,5 +40,16 @@ public sealed class StockAnalysisServiceTests
         public Task<InvestmentScoreDto?> GetLatestScoreAsync(string code, CancellationToken cancellationToken) => Task.FromResult<InvestmentScoreDto?>(null);
         public Task<FinancialSnapshotDto?> GetFinancialSnapshotAsync(string code, DateOnly asOfDate, CancellationToken cancellationToken) => Task.FromResult<FinancialSnapshotDto?>(new FinancialSnapshotDto(code, asOfDate, 20m, 15m, 45m, 20m, 1m, 35m, 2m, 14m, 1.1m, 2m, 10m, 15m, 20m, 18m, 8m));
         public Task SaveInvestmentScoreAsync(InvestmentScoreDto score, CancellationToken cancellationToken) { SavedScore = score; return Task.CompletedTask; }
+    }
+
+    private sealed class InMemoryScoreModelRuleRepository : IScoreModelRuleRepository
+    {
+        public Task<IReadOnlyList<ScoreModelWeightDto>> GetModelWeightsAsync(string modelCode, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ScoreModelWeightDto>>(
+            [
+                new("BUFFETT", 0.40m),
+                new("GRAHAM", 0.20m),
+                new("FISHER", 0.40m)
+            ]);
     }
 }

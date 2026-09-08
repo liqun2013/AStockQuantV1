@@ -1,4 +1,4 @@
-/*
+﻿/*
 ====================================================
  05_InsertInvestmentRules.sql
  Investment Model Rules
@@ -714,7 +714,7 @@ VALUES
     'VALUE_INVESTMENT',
     N'Buffett + Graham + Fisher 价值投资模型',
     'V2.0',
-    N'以企业质量、安全边际、成长性、估值和行业地位为核心的综合价值投资模型。',
+    N'以企业质量、安全边际和成长性为核心的综合价值投资模型。',
     1
 );
 GO
@@ -736,37 +736,23 @@ VALUES
 (
     @ModelId,
     'BUFFETT',
-    0.35,
+    0.40,
     100,
     N'企业质量'
 ),
 (
     @ModelId,
     'GRAHAM',
-    0.25,
+    0.20,
     100,
     N'安全边际'
 ),
 (
     @ModelId,
     'FISHER',
-    0.20,
+    0.40,
     100,
     N'成长能力'
-),
-(
-    @ModelId,
-    'VALUATION',
-    0.15,
-    100,
-    N'综合估值'
-),
-(
-    @ModelId,
-    'INDUSTRY',
-    0.05,
-    100,
-    N'行业竞争位置'
 );
 GO
 

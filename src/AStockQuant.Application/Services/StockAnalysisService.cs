@@ -5,7 +5,7 @@ using AStockQuant.Domain.ValueObjects;
 
 namespace AStockQuant.Application.Services;
 
-public sealed class StockAnalysisService(IStockRepository repository)
+public sealed class StockAnalysisService(IStockRepository repository, IScoreModelRuleRepository ruleRepository)
 {
     private readonly CompositeScoreCalculator calculator = new();
 
@@ -26,11 +26,32 @@ public sealed class StockAnalysisService(IStockRepository repository)
     {
         var snapshot = await repository.GetFinancialSnapshotAsync(code, asOfDate, cancellationToken);
         if (snapshot is null) return null;
-        var score = calculator.Calculate(ToDomain(snapshot));
+        var weights = await GetWeightsAsync(cancellationToken);
+        var score = calculator.Calculate(ToDomain(snapshot), weights);
         var dto = new InvestmentScoreDto(score.StockCode, score.ScoreDate, score.BuffettScore, score.GrahamScore, score.FisherScore, score.FinalScore);
         await repository.SaveInvestmentScoreAsync(dto, cancellationToken);
         return dto;
     }
 
     private static FinancialSnapshot ToDomain(FinancialSnapshotDto d) => new(d.StockCode, d.AsOfDate, d.Roe, d.Roic, d.GrossMargin, d.NetMargin, d.OperatingCashFlowToNetProfit, d.DebtAssetRatio, d.CurrentRatio, d.Pe, d.Pb, d.Eps, d.Bvps, d.MarketPrice, d.RevenueGrowth3Y, d.ProfitGrowth3Y, d.ResearchExpenseRatio);
+
+    private const string ModelCode = "VALUE_INVESTMENT";
+
+    private async Task<CompositeScoreWeights> GetWeightsAsync(CancellationToken cancellationToken)
+    {
+        var configuredWeights = await ruleRepository.GetModelWeightsAsync(ModelCode, cancellationToken);
+        var weights = configuredWeights
+            .GroupBy(item => item.ComponentCode, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Single().Weight, StringComparer.OrdinalIgnoreCase);
+
+        if (!weights.TryGetValue("BUFFETT", out var buffett) ||
+            !weights.TryGetValue("GRAHAM", out var graham) ||
+            !weights.TryGetValue("FISHER", out var fisher) ||
+            weights.Count != 3)
+        {
+            throw new InvalidOperationException($"Active score model '{ModelCode}' must define exactly BUFFETT, GRAHAM and FISHER weights.");
+        }
+
+        return new CompositeScoreWeights(buffett, graham, fisher);
+    }
 }
