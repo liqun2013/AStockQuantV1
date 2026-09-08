@@ -5,13 +5,14 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AStockQuant.Worker.Jobs;
 
-public sealed class StockScoreCalculateJob(IServiceScopeFactory scopeFactory, ILogger<StockScoreCalculateJob> logger) : BackgroundService
+public sealed class StockScoreCalculateJob(IServiceScopeFactory scopeFactory, ISyncStageCoordinator coordinator, ILogger<StockScoreCalculateJob> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromHours(24));
         do
         {
+            await coordinator.WaitForCompletionAsync(SyncStage.FinancialIndicator, stoppingToken);
             await using var scope = scopeFactory.CreateAsyncScope();
             var service = scope.ServiceProvider.GetRequiredService<StockAnalysisService>();
             var scoreDate = DateOnly.FromDateTime(DateTime.UtcNow);

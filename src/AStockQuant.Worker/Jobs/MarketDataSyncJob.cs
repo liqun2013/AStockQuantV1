@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AStockQuant.Worker.Jobs;
 
-public sealed class MarketDataSyncJob(IServiceScopeFactory scopeFactory, ILogger<MarketDataSyncJob> logger) : BackgroundService
+public sealed class MarketDataSyncJob(IServiceScopeFactory scopeFactory, ISyncStageCoordinator coordinator, ILogger<MarketDataSyncJob> logger) : BackgroundService
 {
 		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 		{
@@ -14,6 +14,7 @@ public sealed class MarketDataSyncJob(IServiceScopeFactory scopeFactory, ILogger
 				do
 				{
 						await RunOnceAsync(stoppingToken);
+						coordinator.Complete(SyncStage.MarketData);
 				} while (await timer.WaitForNextTickAsync(stoppingToken));
 		}
 
@@ -27,6 +28,7 @@ public sealed class MarketDataSyncJob(IServiceScopeFactory scopeFactory, ILogger
 				var stockLog = await logRepository.StartAsync("Stock", cancellationToken: cancellationToken);
 				var stockResult = await repository.UpsertStocksAsync(stocks, cancellationToken);
 				await logRepository.CompleteAsync(stockLog, stockResult, cancellationToken);
+				EnsureSucceeded(stockResult);
 				logger.LogInformation("Stock synchronization completed: requested={Requested}, succeeded={Succeeded}, failed={Failed}.", stockResult.Requested, stockResult.Succeeded, stockResult.Failed);
 
 				var endDate = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -35,7 +37,13 @@ public sealed class MarketDataSyncJob(IServiceScopeFactory scopeFactory, ILogger
 				var prices = await RetryAsync(() => provider.GetDailyPricesAsync(stocks.Select(stock => stock.StockCode).ToArray(), startDate, endDate, cancellationToken), cancellationToken);
 				var priceResult = await repository.UpsertDailyPricesAsync(prices, cancellationToken);
 				await logRepository.CompleteAsync(priceLog, priceResult, cancellationToken);
+				EnsureSucceeded(priceResult);
 				logger.LogInformation("Daily price synchronization completed: succeeded={Succeeded}.", priceResult.Succeeded);
+		}
+
+		private static void EnsureSucceeded(SyncResult result)
+		{
+				if (result.Failed > 0) throw new InvalidOperationException($"{result.DataType} synchronization failed: {result.Error}");
 		}
 
 		private static async Task<T> RetryAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken)

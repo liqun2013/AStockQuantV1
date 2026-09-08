@@ -6,14 +6,16 @@ using Microsoft.Extensions.Logging;
 
 namespace AStockQuant.Worker.Jobs;
 
-public sealed class FinancialDataSyncJob(IServiceScopeFactory scopeFactory, ILogger<FinancialDataSyncJob> logger) : BackgroundService
+public sealed class FinancialDataSyncJob(IServiceScopeFactory scopeFactory, ISyncStageCoordinator coordinator, ILogger<FinancialDataSyncJob> logger) : BackgroundService
 {
 		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 		{
 				using var timer = new PeriodicTimer(TimeSpan.FromDays(7));
 				do
 				{
+						await coordinator.WaitForCompletionAsync(SyncStage.MarketData, stoppingToken);
 						await RunOnceAsync(stoppingToken);
+						coordinator.Complete(SyncStage.FinancialData);
 				} while (await timer.WaitForNextTickAsync(stoppingToken));
 		}
 
@@ -27,6 +29,7 @@ public sealed class FinancialDataSyncJob(IServiceScopeFactory scopeFactory, ILog
 				var reportLog = await logRepository.StartAsync("FinancialReport", cancellationToken: cancellationToken);
 				var pageIndex = 1;
 				var processed = 0;
+				var failed = 0;
 				while (!cancellationToken.IsCancellationRequested)
 				{
 						var stocks = await marketRepository.GetStocksAsync(pageIndex, 100, null, null, cancellationToken);
@@ -34,10 +37,13 @@ public sealed class FinancialDataSyncJob(IServiceScopeFactory scopeFactory, ILog
 						var reports = await RetryAsync(() => provider.GetReportsAsync(stocks.Items.Select(stock => stock.Code).ToArray(), cancellationToken), cancellationToken);
 						var result = await repository.UpsertReportsAsync(reports, cancellationToken);
 						processed += result.Succeeded;
+						failed += result.Failed;
 						if (pageIndex * 100 >= stocks.Total) break;
 						pageIndex++;
 				}
-				await logRepository.CompleteAsync(reportLog, new SyncResult("FinancialReport", processed, processed, 0, 0), cancellationToken);
+				var summary = new SyncResult("FinancialReport", processed + failed, processed, 0, failed);
+				await logRepository.CompleteAsync(reportLog, summary, cancellationToken);
+				if (summary.Failed > 0) throw new InvalidOperationException($"Financial report synchronization failed for {summary.Failed} rows.");
 				logger.LogInformation("Financial report synchronization completed: reports={Processed}.", processed);
 		}
 

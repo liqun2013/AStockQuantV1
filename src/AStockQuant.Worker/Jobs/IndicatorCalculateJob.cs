@@ -6,14 +6,16 @@ using Microsoft.Extensions.Logging;
 
 namespace AStockQuant.Worker.Jobs;
 
-public sealed class IndicatorCalculateJob(IServiceScopeFactory scopeFactory, ILogger<IndicatorCalculateJob> logger) : BackgroundService
+public sealed class IndicatorCalculateJob(IServiceScopeFactory scopeFactory, ISyncStageCoordinator coordinator, ILogger<IndicatorCalculateJob> logger) : BackgroundService
 {
 		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 		{
 				using var timer = new PeriodicTimer(TimeSpan.FromDays(7));
 				do
 				{
+						await coordinator.WaitForCompletionAsync(SyncStage.FinancialData, stoppingToken);
 						await RunOnceAsync(stoppingToken);
+						coordinator.Complete(SyncStage.FinancialIndicator);
 				} while (await timer.WaitForNextTickAsync(stoppingToken));
 		}
 
@@ -47,6 +49,7 @@ public sealed class IndicatorCalculateJob(IServiceScopeFactory scopeFactory, ILo
 
 				var resultSummary = new SyncResult("FinancialIndicator", requested, succeeded, skipped, failed);
 				await logRepository.CompleteAsync(handle, resultSummary, cancellationToken);
+				if (resultSummary.Failed > 0) throw new InvalidOperationException($"Financial indicator calculation failed for {resultSummary.Failed} rows.");
 				logger.LogInformation("Financial indicator calculation completed: succeeded={Succeeded}, failed={Failed}.", succeeded, failed);
 		}
 }
