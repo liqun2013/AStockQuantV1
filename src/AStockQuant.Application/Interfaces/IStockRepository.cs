@@ -6,6 +6,7 @@ public interface IStockRepository
     Task<StockDto?> GetStockAsync(string code, CancellationToken cancellationToken);
     Task<IReadOnlyList<DailyPriceDto>> GetDailyPricesAsync(string code, DateOnly? startDate, DateOnly? endDate, CancellationToken cancellationToken);
     Task<IReadOnlyList<InvestmentScoreDto>> GetRankingAsync(DateOnly scoreDate, decimal? minScore, CancellationToken cancellationToken);
+    Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(StockScreeningRequest request, CancellationToken cancellationToken);
     Task<InvestmentScoreDto?> GetLatestScoreAsync(string code, CancellationToken cancellationToken);
     Task<FinancialSnapshotDto?> GetFinancialSnapshotAsync(string code, DateOnly asOfDate, CancellationToken cancellationToken);
     Task SaveInvestmentScoreAsync(InvestmentScoreDto score, CancellationToken cancellationToken);

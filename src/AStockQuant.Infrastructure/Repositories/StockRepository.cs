@@ -84,6 +84,73 @@ ORDER BY p.TradeDate;
         return rows.Select(ToInvestmentScore).ToArray();
     }
 
+    public async Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(StockScreeningRequest request, CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        const string sql = """
+SELECT TOP (@TopN)
+    stock.StockCode,
+    stock.StockName,
+    industry.IndustryCode,
+    industry.IndustryName,
+    score.ScoreDate,
+    financial.ReportPeriod AS FinancialReportDate,
+    score.BuffettScore,
+    score.GrahamScore,
+    score.FisherScore,
+    score.FinalScore
+FROM Quant.InvestmentScore score
+INNER JOIN Basic.Stock stock ON stock.StockId = score.StockId
+OUTER APPLY
+(
+    SELECT TOP (1) relation.IndustryId
+    FROM Basic.StockIndustry relation
+    WHERE relation.StockId = stock.StockId
+      AND relation.IsPrimary = 1
+      AND relation.EffectiveDate <= score.ScoreDate
+      AND (relation.ExpireDate IS NULL OR relation.ExpireDate >= score.ScoreDate)
+    ORDER BY relation.EffectiveDate DESC
+) primaryIndustry
+LEFT JOIN Basic.Industry industry ON industry.IndustryId = primaryIndustry.IndustryId
+OUTER APPLY
+(
+    SELECT TOP (1) report.ReportPeriod, indicator.ROE, indicator.ROIC, indicator.GrossMargin,
+        indicator.NetMargin, indicator.DebtRatio, indicator.CurrentRatio
+    FROM Finance.FinancialReport report
+    INNER JOIN Finance.FinancialIndicator indicator ON indicator.ReportId = report.ReportId
+    WHERE report.StockId = stock.StockId
+      AND report.PublishDate IS NOT NULL
+      AND report.PublishDate <= score.ScoreDate
+    ORDER BY report.ReportPeriod DESC, report.PublishDate DESC, report.VersionNo DESC
+) financial
+WHERE score.ModelId = 1
+  AND score.ScoreDate = @ScoreDate
+  AND stock.IsActive = 1
+  AND (stock.DelistingDate IS NULL OR stock.DelistingDate > score.ScoreDate)
+  AND stock.ListingDate <= DATEADD(YEAR, -@MinimumListingYears, score.ScoreDate)
+  AND score.BuffettScore >= @MinimumBuffettScore
+  AND score.GrahamScore >= @MinimumGrahamScore
+  AND score.FisherScore >= @MinimumFisherScore
+  AND
+  (
+      @RequireCompleteFinancialData = 0
+      OR (financial.ROE IS NOT NULL AND financial.ROIC IS NOT NULL AND financial.GrossMargin IS NOT NULL
+          AND financial.NetMargin IS NOT NULL AND financial.DebtRatio IS NOT NULL AND financial.CurrentRatio IS NOT NULL)
+  )
+ORDER BY score.FinalScore DESC, stock.StockCode;
+""";
+        return (await connection.QueryAsync<StockCandidateDto>(new CommandDefinition(sql, new
+        {
+            ScoreDate = request.ScoreDate!.Value.ToDateTime(TimeOnly.MinValue),
+            request.TopN,
+            request.MinimumListingYears,
+            request.MinimumFisherScore,
+            request.MinimumBuffettScore,
+            request.MinimumGrahamScore,
+            request.RequireCompleteFinancialData
+        }, cancellationToken: cancellationToken))).AsList();
+    }
+
     public async Task<InvestmentScoreDto?> GetLatestScoreAsync(string code, CancellationToken cancellationToken)
     {
         using var connection = connectionFactory.CreateConnection();
@@ -203,7 +270,7 @@ USING (SELECT StockId FROM Basic.Stock WHERE StockCode = @StockCode) AS source
 ON target.StockId = source.StockId AND target.ModelId = 1 AND target.ScoreDate = @ScoreDate
 WHEN MATCHED THEN UPDATE SET BuffettScore=@BuffettScore, GrahamScore=@GrahamScore, FisherScore=@FisherScore, BaseScore=@FinalScore, FinalScore=@FinalScore
 WHEN NOT MATCHED THEN INSERT (StockId, ModelId, ScoreDate, BuffettScore, GrahamScore, FisherScore, ValuationScore, IndustryScore, RiskAdjustment, BaseScore, FinalScore, DataAsOfDate, CreatedTime)
-VALUES (source.StockId, 1, @ScoreDate, @BuffettScore, @GrahamScore, @FisherScore, @GrahamScore, 0, 0, @FinalScore, @FinalScore, @ScoreDate, SYSUTCDATETIME());
+VALUES (source.StockId, 1, @ScoreDate, @BuffettScore, @GrahamScore, @FisherScore, NULL, NULL, 0, @FinalScore, @FinalScore, @ScoreDate, SYSUTCDATETIME());
 """;
         await connection.ExecuteAsync(new CommandDefinition(sql, new
         {
