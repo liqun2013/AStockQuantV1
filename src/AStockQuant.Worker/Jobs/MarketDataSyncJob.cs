@@ -31,21 +31,11 @@ public sealed class MarketDataSyncJob(IServiceScopeFactory scopeFactory, ILogger
 
 				var endDate = DateOnly.FromDateTime(DateTime.UtcNow);
 				var startDate = endDate.AddDays(-30);
-				var totalRequested = 0;
-				var totalSucceeded = 0;
-				var totalFailed = 0;
 				var priceLog = await logRepository.StartAsync("DailyPrice", cancellationToken: cancellationToken);
-				foreach (var stock in stocks)
-				{
-						var prices = await RetryAsync(() => provider.GetDailyPricesAsync(stock.StockCode, startDate, endDate, cancellationToken), cancellationToken);
-						var result = await repository.UpsertDailyPricesAsync(prices, cancellationToken);
-						totalRequested += result.Requested;
-						totalSucceeded += result.Succeeded;
-						totalFailed += result.Failed;
-				}
-				var priceResult = new SyncResult("DailyPrice", totalRequested, totalSucceeded, 0, totalFailed);
+				var prices = await RetryAsync(() => provider.GetDailyPricesAsync(stocks.Select(stock => stock.StockCode).ToArray(), startDate, endDate, cancellationToken), cancellationToken);
+				var priceResult = await repository.UpsertDailyPricesAsync(prices, cancellationToken);
 				await logRepository.CompleteAsync(priceLog, priceResult, cancellationToken);
-				logger.LogInformation("Daily price synchronization completed: succeeded={Succeeded}.", totalSucceeded);
+				logger.LogInformation("Daily price synchronization completed: succeeded={Succeeded}.", priceResult.Succeeded);
 		}
 
 		private static async Task<T> RetryAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken)
