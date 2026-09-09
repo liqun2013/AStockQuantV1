@@ -5,6 +5,7 @@ using AStockQuant.Infrastructure;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddScoped<StockAnalysisService>();
+builder.Services.AddScoped<IScreeningService, ScreeningService>();
 builder.Services.AddScoped<IDataSyncService, DataSyncService>();
 builder.Services.AddInfrastructure(builder.Configuration);
 var app = builder.Build();

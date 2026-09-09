@@ -19,11 +19,6 @@ public sealed class StockAnalysisService(IStockRepository repository, IScoreMode
     public Task<StockDto?> GetStockAsync(string code, CancellationToken cancellationToken = default) => repository.GetStockAsync(code, cancellationToken);
     public Task<IReadOnlyList<DailyPriceDto>> GetDailyPricesAsync(string code, DateOnly? startDate, DateOnly? endDate, CancellationToken cancellationToken = default) => repository.GetDailyPricesAsync(code, startDate, endDate, cancellationToken);
     public Task<IReadOnlyList<InvestmentScoreDto>> GetRankingAsync(DateOnly scoreDate, decimal? minScore, CancellationToken cancellationToken = default) => repository.GetRankingAsync(scoreDate, minScore, cancellationToken);
-    public Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(string profileCode, string version, DateOnly? scoreDate, CancellationToken cancellationToken = default)
-    {
-        var normalizedScoreDate = scoreDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        return repository.GetCandidatesAsync(profileCode, version, normalizedScoreDate, cancellationToken);
-    }
     public Task<InvestmentScoreDto?> GetLatestScoreAsync(string code, CancellationToken cancellationToken = default) => repository.GetLatestScoreAsync(code, cancellationToken);
     public Task<FinancialSnapshotDto?> GetFinancialSnapshotAsync(string code, DateOnly asOfDate, CancellationToken cancellationToken = default) => repository.GetFinancialSnapshotAsync(code, asOfDate, cancellationToken);
 

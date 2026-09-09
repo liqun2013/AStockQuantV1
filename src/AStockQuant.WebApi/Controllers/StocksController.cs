@@ -1,4 +1,5 @@
 using AStockQuant.Application.DTOs;
+using AStockQuant.Application.Interfaces;
 using AStockQuant.Application.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -6,7 +7,7 @@ namespace AStockQuant.WebApi.Controllers;
 
 [ApiController]
 [Route("api/v1")]
-public sealed class StocksController(StockAnalysisService service) : ControllerBase
+public sealed class StocksController(StockAnalysisService service, IScreeningService screeningService) : ControllerBase
 {
     [HttpGet("stocks")]
     public async Task<ApiResponse<PagedResult<StockDto>>> GetStocks([FromQuery] int pageIndex = 1, [FromQuery] int pageSize = 20, [FromQuery] string? market = null, [FromQuery] string? industry = null, CancellationToken cancellationToken = default) => ApiResponse<PagedResult<StockDto>>.Ok(await service.GetStocksAsync(pageIndex, pageSize, market, industry, cancellationToken));
@@ -48,5 +49,5 @@ public sealed class StocksController(StockAnalysisService service) : ControllerB
 
     [HttpGet("candidates")]
     public async Task<ApiResponse<IReadOnlyList<StockCandidateDto>>> GetCandidates([FromQuery] string profileCode = "VALUE_QUALITY", [FromQuery] string version = "V1.0", [FromQuery] DateOnly? scoreDate = null, CancellationToken cancellationToken = default) =>
-        ApiResponse<IReadOnlyList<StockCandidateDto>>.Ok(await service.GetCandidatesAsync(profileCode, version, scoreDate, cancellationToken));
+        ApiResponse<IReadOnlyList<StockCandidateDto>>.Ok(await screeningService.GetCandidatesAsync(profileCode, version, scoreDate, cancellationToken));
 }
