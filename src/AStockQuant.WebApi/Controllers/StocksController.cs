@@ -47,6 +47,6 @@ public sealed class StocksController(StockAnalysisService service) : ControllerB
     public async Task<ApiResponse<IReadOnlyList<InvestmentScoreDto>>> GetRanking([FromQuery] DateOnly? scoreDate, [FromQuery] decimal? minScore, CancellationToken cancellationToken) => ApiResponse<IReadOnlyList<InvestmentScoreDto>>.Ok(await service.GetRankingAsync(scoreDate ?? DateOnly.FromDateTime(DateTime.UtcNow), minScore, cancellationToken));
 
     [HttpGet("candidates")]
-    public async Task<ApiResponse<IReadOnlyList<StockCandidateDto>>> GetCandidates([FromQuery] StockScreeningRequest request, CancellationToken cancellationToken) =>
-        ApiResponse<IReadOnlyList<StockCandidateDto>>.Ok(await service.GetCandidatesAsync(request, cancellationToken));
+    public async Task<ApiResponse<IReadOnlyList<StockCandidateDto>>> GetCandidates([FromQuery] string profileCode = "VALUE_QUALITY", [FromQuery] string version = "V1.0", [FromQuery] DateOnly? scoreDate = null, CancellationToken cancellationToken = default) =>
+        ApiResponse<IReadOnlyList<StockCandidateDto>>.Ok(await service.GetCandidatesAsync(profileCode, version, scoreDate, cancellationToken));
 }

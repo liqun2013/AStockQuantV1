@@ -19,18 +19,10 @@ public sealed class StockAnalysisService(IStockRepository repository, IScoreMode
     public Task<StockDto?> GetStockAsync(string code, CancellationToken cancellationToken = default) => repository.GetStockAsync(code, cancellationToken);
     public Task<IReadOnlyList<DailyPriceDto>> GetDailyPricesAsync(string code, DateOnly? startDate, DateOnly? endDate, CancellationToken cancellationToken = default) => repository.GetDailyPricesAsync(code, startDate, endDate, cancellationToken);
     public Task<IReadOnlyList<InvestmentScoreDto>> GetRankingAsync(DateOnly scoreDate, decimal? minScore, CancellationToken cancellationToken = default) => repository.GetRankingAsync(scoreDate, minScore, cancellationToken);
-    public Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(StockScreeningRequest request, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(string profileCode, string version, DateOnly? scoreDate, CancellationToken cancellationToken = default)
     {
-        var normalizedRequest = request with
-        {
-            ScoreDate = request.ScoreDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
-            TopN = Math.Clamp(request.TopN, 1, 500),
-            MinimumListingYears = Math.Clamp(request.MinimumListingYears, 0, 50),
-            MinimumFisherScore = Math.Clamp(request.MinimumFisherScore, 0m, 100m),
-            MinimumBuffettScore = Math.Clamp(request.MinimumBuffettScore, 0m, 100m),
-            MinimumGrahamScore = Math.Clamp(request.MinimumGrahamScore, 0m, 100m)
-        };
-        return repository.GetCandidatesAsync(normalizedRequest, cancellationToken);
+        var normalizedScoreDate = scoreDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        return repository.GetCandidatesAsync(profileCode, version, normalizedScoreDate, cancellationToken);
     }
     public Task<InvestmentScoreDto?> GetLatestScoreAsync(string code, CancellationToken cancellationToken = default) => repository.GetLatestScoreAsync(code, cancellationToken);
     public Task<FinancialSnapshotDto?> GetFinancialSnapshotAsync(string code, DateOnly asOfDate, CancellationToken cancellationToken = default) => repository.GetFinancialSnapshotAsync(code, asOfDate, cancellationToken);
@@ -42,7 +34,7 @@ public sealed class StockAnalysisService(IStockRepository repository, IScoreMode
         var weights = await GetWeightsAsync(cancellationToken);
         var score = calculator.Calculate(ToDomain(snapshot), weights);
         var dto = new InvestmentScoreDto(score.StockCode, score.ScoreDate, score.BuffettScore, score.GrahamScore, score.FisherScore, score.FinalScore);
-        await repository.SaveInvestmentScoreAsync(dto, cancellationToken);
+        await repository.SaveInvestmentScoreAsync(dto, ModelCode, cancellationToken);
         return dto;
     }
 

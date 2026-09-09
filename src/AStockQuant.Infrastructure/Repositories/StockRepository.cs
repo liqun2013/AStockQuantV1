@@ -73,10 +73,13 @@ ORDER BY p.TradeDate;
     public async Task<IReadOnlyList<InvestmentScoreDto>> GetRankingAsync(DateOnly scoreDate, decimal? minScore, CancellationToken cancellationToken)
     {
         using var connection = connectionFactory.CreateConnection();
+        // resolve active model id for VALUE_INVESTMENT
+        var modelId = await connection.ExecuteScalarAsync<int?>(new CommandDefinition("SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE ModelCode = @ModelCode AND IsActive = 1", new { ModelCode = "VALUE_INVESTMENT" }, cancellationToken: cancellationToken));
+        if (modelId is null) throw new InvalidOperationException("Active score model 'VALUE_INVESTMENT' not found.");
         const string sql = "EXEC dbo.sp_GetStockRanking @ModelId, @ScoreDate, @TopN, @MinScore";
         var rows = await connection.QueryAsync(new CommandDefinition(sql, new
         {
-            ModelId = 1,
+            ModelId = modelId.Value,
             ScoreDate = scoreDate.ToDateTime(TimeOnly.MinValue),
             TopN = 100,
             MinScore = minScore
@@ -84,9 +87,77 @@ ORDER BY p.TradeDate;
         return rows.Select(ToInvestmentScore).ToArray();
     }
 
-    public async Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(StockScreeningRequest request, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(string profileCode, string version, DateOnly? scoreDate, CancellationToken cancellationToken)
     {
         using var connection = connectionFactory.CreateConnection();
+
+        const string profileSql = """
+SELECT TOP (1) ProfileId, ScoreModelId
+FROM Strategy.ScreeningProfile
+WHERE ProfileCode = @ProfileCode
+  AND Version = @Version
+  AND IsActive = 1;
+""";
+        var profile = await connection.QuerySingleOrDefaultAsync(new CommandDefinition(profileSql, new
+        {
+            ProfileCode = profileCode,
+            Version = version
+        }, cancellationToken: cancellationToken));
+        if (profile is null)
+        {
+            throw new InvalidOperationException($"Screening profile '{profileCode}@{version}' not found or inactive.");
+        }
+
+        var modelId = Convert.ToInt32(profile.ScoreModelId);
+        var topN = 100;
+        var minimumListingYears = 3;
+        var minimumFisherScore = 0m;
+        var minimumBuffettScore = 0m;
+        var minimumGrahamScore = 0m;
+        var requireCompleteFinancialData = false;
+
+        const string ruleSql = """
+SELECT RuleCode, NumericValue, BoolValue
+FROM Strategy.ScreeningRule
+WHERE ProfileId = @ProfileId;
+""";
+        var rules = await connection.QueryAsync(new CommandDefinition(ruleSql, new
+        {
+            ProfileId = Convert.ToInt32(profile.ProfileId)
+        }, cancellationToken: cancellationToken));
+
+        foreach (var rule in rules)
+        {
+            var ruleCode = Convert.ToString(rule.RuleCode);
+            if (string.IsNullOrWhiteSpace(ruleCode))
+            {
+                continue;
+            }
+
+            switch (ruleCode)
+            {
+                case "TOP_N":
+                    if (rule.NumericValue is not null) topN = Convert.ToInt32(rule.NumericValue);
+                    break;
+                case "MINIMUM_LISTING_YEARS":
+                    if (rule.NumericValue is not null) minimumListingYears = Convert.ToInt32(rule.NumericValue);
+                    break;
+                case "MINIMUM_FISHER_SCORE":
+                    if (rule.NumericValue is not null) minimumFisherScore = Convert.ToDecimal(rule.NumericValue);
+                    break;
+                case "MINIMUM_BUFFETT_SCORE":
+                    if (rule.NumericValue is not null) minimumBuffettScore = Convert.ToDecimal(rule.NumericValue);
+                    break;
+                case "MINIMUM_GRAHAM_SCORE":
+                    if (rule.NumericValue is not null) minimumGrahamScore = Convert.ToDecimal(rule.NumericValue);
+                    break;
+                case "REQUIRE_COMPLETE_FINANCIAL_DATA":
+                    if (rule.BoolValue is not null) requireCompleteFinancialData = Convert.ToBoolean(rule.BoolValue);
+                    break;
+            }
+        }
+
+        var targetScoreDate = (scoreDate ?? DateOnly.FromDateTime(DateTime.UtcNow)).ToDateTime(TimeOnly.MinValue);
         const string sql = """
 SELECT TOP (@TopN)
     stock.StockCode,
@@ -123,7 +194,7 @@ OUTER APPLY
       AND report.PublishDate <= score.ScoreDate
     ORDER BY report.ReportPeriod DESC, report.PublishDate DESC, report.VersionNo DESC
 ) financial
-WHERE score.ModelId = 1
+WHERE score.ModelId = @ModelId
   AND score.ScoreDate = @ScoreDate
   AND stock.IsActive = 1
   AND (stock.DelistingDate IS NULL OR stock.DelistingDate > score.ScoreDate)
@@ -141,13 +212,14 @@ ORDER BY score.FinalScore DESC, stock.StockCode;
 """;
         return (await connection.QueryAsync<StockCandidateDto>(new CommandDefinition(sql, new
         {
-            ScoreDate = request.ScoreDate!.Value.ToDateTime(TimeOnly.MinValue),
-            request.TopN,
-            request.MinimumListingYears,
-            request.MinimumFisherScore,
-            request.MinimumBuffettScore,
-            request.MinimumGrahamScore,
-            request.RequireCompleteFinancialData
+            ModelId = modelId,
+            ScoreDate = targetScoreDate,
+            TopN = topN,
+            MinimumListingYears = minimumListingYears,
+            MinimumFisherScore = minimumFisherScore,
+            MinimumBuffettScore = minimumBuffettScore,
+            MinimumGrahamScore = minimumGrahamScore,
+            RequireCompleteFinancialData = requireCompleteFinancialData
         }, cancellationToken: cancellationToken))).AsList();
     }
 
@@ -261,20 +333,21 @@ WHERE s.StockCode = @StockCode
         Convert.ToDecimal(row.FisherScore),
         Convert.ToDecimal(row.FinalScore));
 
-    public async Task SaveInvestmentScoreAsync(InvestmentScoreDto score, CancellationToken cancellationToken)
+    public async Task SaveInvestmentScoreAsync(InvestmentScoreDto score, string modelCode, CancellationToken cancellationToken)
     {
         using var connection = connectionFactory.CreateConnection();
         const string sql = """
 MERGE Quant.InvestmentScore AS target
 USING (SELECT StockId FROM Basic.Stock WHERE StockCode = @StockCode) AS source
-ON target.StockId = source.StockId AND target.ModelId = 1 AND target.ScoreDate = @ScoreDate
+ON target.StockId = source.StockId AND target.ModelId = (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE ModelCode = @ModelCode AND IsActive = 1) AND target.ScoreDate = @ScoreDate
 WHEN MATCHED THEN UPDATE SET BuffettScore=@BuffettScore, GrahamScore=@GrahamScore, FisherScore=@FisherScore, BaseScore=@FinalScore, FinalScore=@FinalScore
 WHEN NOT MATCHED THEN INSERT (StockId, ModelId, ScoreDate, BuffettScore, GrahamScore, FisherScore, ValuationScore, IndustryScore, RiskAdjustment, BaseScore, FinalScore, DataAsOfDate, CreatedTime)
-VALUES (source.StockId, 1, @ScoreDate, @BuffettScore, @GrahamScore, @FisherScore, NULL, NULL, 0, @FinalScore, @FinalScore, @ScoreDate, SYSUTCDATETIME());
+VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE ModelCode = @ModelCode AND IsActive = 1), @ScoreDate, @BuffettScore, @GrahamScore, @FisherScore, NULL, NULL, 0, @FinalScore, @FinalScore, @ScoreDate, SYSUTCDATETIME());
 """;
         await connection.ExecuteAsync(new CommandDefinition(sql, new
         {
             score.StockCode,
+            ModelCode = modelCode,
             ScoreDate = score.ScoreDate.ToDateTime(TimeOnly.MinValue),
             score.BuffettScore,
             score.GrahamScore,
