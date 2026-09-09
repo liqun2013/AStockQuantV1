@@ -36,6 +36,9 @@ BEGIN
 		IF NOT EXISTS (SELECT 1 FROM Strategy.ScreeningRule WHERE ProfileId = @ProfileId AND RuleCode = 'MINIMUM_GRAHAM_SCORE')
 				INSERT INTO Strategy.ScreeningRule (ProfileId, RuleCode, NumericValue) VALUES (@ProfileId, 'MINIMUM_GRAHAM_SCORE', 50);
 
+		IF NOT EXISTS (SELECT 1 FROM Strategy.ScreeningRule WHERE ProfileId = @ProfileId AND RuleCode = 'MINIMUM_FINAL_SCORE')
+				INSERT INTO Strategy.ScreeningRule (ProfileId, RuleCode, NumericValue) VALUES (@ProfileId, 'MINIMUM_FINAL_SCORE', 0);
+
 		IF NOT EXISTS (SELECT 1 FROM Strategy.ScreeningRule WHERE ProfileId = @ProfileId AND RuleCode = 'REQUIRE_COMPLETE_FINANCIAL_DATA')
 				INSERT INTO Strategy.ScreeningRule (ProfileId, RuleCode, BoolValue) VALUES (@ProfileId, 'REQUIRE_COMPLETE_FINANCIAL_DATA', 1);
 

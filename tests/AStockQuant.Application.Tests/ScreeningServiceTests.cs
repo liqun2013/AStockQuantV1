@@ -24,6 +24,7 @@ public sealed class ScreeningServiceTests
 				[
 						new("TOP_N", 2m, null, null), new("MINIMUM_LISTING_YEARS", 3m, null, null), new("MINIMUM_FISHER_SCORE", 60m, null, null),
 						new("MINIMUM_BUFFETT_SCORE", 60m, null, null), new("MINIMUM_GRAHAM_SCORE", 50m, null, null),
+						new("MINIMUM_FINAL_SCORE", 0m, null, null),
 						new("REQUIRE_COMPLETE_FINANCIAL_DATA", null, true, null), new("EXCLUDE_ST", null, true, null)
 				]));
 

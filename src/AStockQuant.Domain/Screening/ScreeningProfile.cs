@@ -7,6 +7,7 @@ public sealed class ScreeningProfile
 		private const string MinimumFisherScoreCode = "MINIMUM_FISHER_SCORE";
 		private const string MinimumBuffettScoreCode = "MINIMUM_BUFFETT_SCORE";
 		private const string MinimumGrahamScoreCode = "MINIMUM_GRAHAM_SCORE";
+		private const string MinimumFinalScoreCode = "MINIMUM_FINAL_SCORE";
 		private const string RequireCompleteFinancialDataCode = "REQUIRE_COMPLETE_FINANCIAL_DATA";
 		private const string ExcludeStCode = "EXCLUDE_ST";
 
@@ -26,6 +27,7 @@ public sealed class ScreeningProfile
 				MinimumFisherScore = GetNumber(MinimumFisherScoreCode, 0, 100);
 				MinimumBuffettScore = GetNumber(MinimumBuffettScoreCode, 0, 100);
 				MinimumGrahamScore = GetNumber(MinimumGrahamScoreCode, 0, 100);
+				MinimumFinalScore = GetNumber(MinimumFinalScoreCode, 0, 100);
 				RequireCompleteFinancialData = GetBoolean(RequireCompleteFinancialDataCode);
 				ExcludeST = GetBoolean(ExcludeStCode);
 		}
@@ -41,6 +43,7 @@ public sealed class ScreeningProfile
 		public decimal MinimumFisherScore { get; }
 		public decimal MinimumBuffettScore { get; }
 		public decimal MinimumGrahamScore { get; }
+		public decimal MinimumFinalScore { get; }
 		public bool RequireCompleteFinancialData { get; }
 		public bool ExcludeST { get; }
 
@@ -52,6 +55,7 @@ public sealed class ScreeningProfile
 				if (context.BuffettScore < MinimumBuffettScore) return Reject(context, "Buffett score is below the minimum.");
 				if (context.GrahamScore < MinimumGrahamScore) return Reject(context, "Graham score is below the minimum.");
 				if (context.FisherScore < MinimumFisherScore) return Reject(context, "Fisher score is below the minimum.");
+				if (context.FinalScore < MinimumFinalScore) return Reject(context, "Final score is below the minimum.");
 				if (RequireCompleteFinancialData && !context.HasCompleteFinancialData) return Reject(context, "Financial data is incomplete.");
 				return new ScreeningDecision(context, true, null);
 		}
