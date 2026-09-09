@@ -138,6 +138,7 @@ OUTER APPLY
 WHERE score.ModelId = @ModelId
   AND score.ScoreDate = @ScoreDate
   AND stock.IsActive = 1
+      AND (@ExcludeST = 0 OR stock.IsST = 0)
   AND (stock.DelistingDate IS NULL OR stock.DelistingDate > score.ScoreDate)
   AND stock.ListingDate <= DATEADD(YEAR, -@MinimumListingYears, score.ScoreDate)
   AND score.BuffettScore >= @MinimumBuffettScore
@@ -160,7 +161,8 @@ ORDER BY score.FinalScore DESC, stock.StockCode;
             criteria.MinimumFisherScore,
             criteria.MinimumBuffettScore,
             criteria.MinimumGrahamScore,
-            criteria.RequireCompleteFinancialData
+      criteria.RequireCompleteFinancialData,
+      criteria.ExcludeST
         }, cancellationToken: cancellationToken))).AsList();
     }
 
@@ -306,6 +308,7 @@ VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE Mode
         const string minimumBuffettScoreCode = "MINIMUM_BUFFETT_SCORE";
         const string minimumGrahamScoreCode = "MINIMUM_GRAHAM_SCORE";
         const string requireCompleteFinancialDataCode = "REQUIRE_COMPLETE_FINANCIAL_DATA";
+    const string excludeStCode = "EXCLUDE_ST";
 
         var allowedRuleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -314,7 +317,8 @@ VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE Mode
             minimumFisherScoreCode,
             minimumBuffettScoreCode,
             minimumGrahamScoreCode,
-            requireCompleteFinancialDataCode
+      requireCompleteFinancialDataCode,
+      excludeStCode
         };
 
         var unknownRule = configuredRules.Keys.FirstOrDefault(ruleCode => !allowedRuleCodes.Contains(ruleCode));
@@ -349,9 +353,14 @@ VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE Mode
             throw new InvalidOperationException("TOP_N and MINIMUM_LISTING_YEARS must be whole numbers.");
         }
 
-        if (!configuredRules.TryGetValue(requireCompleteFinancialDataCode, out var requireCompleteFinancialDataRule) || requireCompleteFinancialDataRule.BoolValue is null || requireCompleteFinancialDataRule.NumericValue is not null || requireCompleteFinancialDataRule.StringValue is not null)
+    bool GetBoolean(string ruleCode)
         {
-            throw new InvalidOperationException($"Screening rule '{requireCompleteFinancialDataCode}' must define one boolean value.");
+      if (!configuredRules.TryGetValue(ruleCode, out var rule) || rule.BoolValue is null || rule.NumericValue is not null || rule.StringValue is not null)
+      {
+        throw new InvalidOperationException($"Screening rule '{ruleCode}' must define one boolean value.");
+      }
+
+      return rule.BoolValue.Value;
         }
 
         return new ScreeningCriteria(
@@ -360,7 +369,8 @@ VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE Mode
             minimumFisherScore,
             minimumBuffettScore,
             minimumGrahamScore,
-            requireCompleteFinancialDataRule.BoolValue.Value);
+      GetBoolean(requireCompleteFinancialDataCode),
+      GetBoolean(excludeStCode));
     }
 
     private sealed record ScreeningCriteria(
@@ -369,5 +379,6 @@ VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE Mode
         decimal MinimumFisherScore,
         decimal MinimumBuffettScore,
         decimal MinimumGrahamScore,
-        bool RequireCompleteFinancialData);
+    bool RequireCompleteFinancialData,
+    bool ExcludeST);
 }

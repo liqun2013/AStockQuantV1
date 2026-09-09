@@ -1,4 +1,4 @@
-/*
+﻿/*
 ====================================================
  03_CreateTables.sql
  Part 1 - Basic + Market
@@ -116,6 +116,10 @@ CREATE TABLE Basic.Stock
     IsActive BIT NOT NULL
         CONSTRAINT DF_Basic_Stock_IsActive
         DEFAULT (1),
+
+    IsST BIT NOT NULL
+        CONSTRAINT DF_Basic_Stock_IsST
+        DEFAULT (0),
 
     CreatedTime DATETIME2(0) NOT NULL
         CONSTRAINT DF_Basic_Stock_CreatedTime

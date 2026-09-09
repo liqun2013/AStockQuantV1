@@ -37,7 +37,7 @@ public sealed class DataSyncServiceTests
 		private sealed class FakeMarketProvider : IMarketDataProvider
 		{
 				public IReadOnlyCollection<string> BatchStockCodes { get; private set; } = [];
-				public Task<IReadOnlyList<StockImportDto>> GetStocksAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<StockImportDto>>([new("600519", "Test", "SSE", "Stock", "Main", null, true), new("000001", "Test 2", "SZSE", "Stock", "Main", null, true)]);
+				public Task<IReadOnlyList<StockImportDto>> GetStocksAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<StockImportDto>>([new("600519", "Test", "SSE", "Stock", "Main", null, true, false), new("000001", "Test 2", "SZSE", "Stock", "Main", null, true, false)]);
 				public Task<IReadOnlyList<DailyPriceImportDto>> GetDailyPricesAsync(string stockCode, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<DailyPriceImportDto>>([new(stockCode, startDate, 1, 2, 0.5m, 1.5m, 1.2m, 0.3m, 25, 100, 150, 1, null, null, false, "Test")]);
 				public async Task<IReadOnlyList<DailyPriceImportDto>> GetDailyPricesAsync(IReadOnlyCollection<string> stockCodes, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default) { BatchStockCodes = stockCodes; return (await Task.WhenAll(stockCodes.Select(stockCode => GetDailyPricesAsync(stockCode, startDate, endDate, cancellationToken)))).SelectMany(values => values).ToArray(); }
 		}

@@ -16,7 +16,7 @@ public sealed class AkToolsMarketDataProvider(IAkToolsClient client) : IMarketDa
 						var code = String(row, "SECURITY_CODE", "代码");
 						var name = String(row, "SECURITY_NAME_ABBR", "名称");
 						if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(name)) continue;
-						result.Add(new StockImportDto(code, name, Exchange(code), "Stock", String(row, "MARKET", "市场"), null, true));
+				result.Add(new StockImportDto(code, name, Exchange(code), "Stock", String(row, "MARKET", "市场"), null, true, IsSt(name)));
 				}
 				return result;
 		}
@@ -80,6 +80,8 @@ public sealed class AkToolsMarketDataProvider(IAkToolsClient client) : IMarketDa
 		};
 
 		private static string Exchange(string code) => code.StartsWith('6') ? "SSE" : "SZSE";
+
+		private static bool IsSt(string stockName) => stockName.TrimStart().TrimStart('*').StartsWith("ST", StringComparison.OrdinalIgnoreCase);
 
 		private static string TxSymbol(string stockCode)
 		{

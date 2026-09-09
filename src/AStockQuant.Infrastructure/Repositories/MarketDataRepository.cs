@@ -31,13 +31,13 @@ MERGE Basic.Stock AS target
 USING
 (
 		SELECT
-				source.StockCode, source.StockName, exchange.ExchangeId, source.SecurityType,
-				source.MarketType, source.ListingDate, source.IsActive
+					source.StockCode, source.StockName, exchange.ExchangeId, source.SecurityType,
+					source.MarketType, source.ListingDate, source.IsActive, source.IsST
 		FROM OPENJSON(@StocksJson) WITH
 		(
 			StockCode VARCHAR(20) '$.StockCode', StockName NVARCHAR(100) '$.StockName',
 			ExchangeCode VARCHAR(20) '$.ExchangeCode', SecurityType VARCHAR(50) '$.SecurityType',
-			MarketType VARCHAR(50) '$.MarketType', ListingDate DATE '$.ListingDate', IsActive BIT '$.IsActive'
+			MarketType VARCHAR(50) '$.MarketType', ListingDate DATE '$.ListingDate', IsActive BIT '$.IsActive', IsST BIT '$.IsST'
 		) AS source
 		INNER JOIN Basic.Exchange exchange ON exchange.ExchangeCode = source.ExchangeCode
 ) AS source
@@ -49,9 +49,10 @@ WHEN MATCHED THEN UPDATE SET
 		MarketType = source.MarketType,
 		ListingDate = COALESCE(source.ListingDate, target.ListingDate),
 		IsActive = source.IsActive,
+		IsST = source.IsST,
 		UpdatedTime = SYSUTCDATETIME()
-WHEN NOT MATCHED THEN INSERT (StockCode, StockName, ExchangeId, SecurityType, MarketType, ListingDate, IsActive, CreatedTime, UpdatedTime)
-VALUES (source.StockCode, source.StockName, source.ExchangeId, source.SecurityType, source.MarketType, source.ListingDate, source.IsActive, SYSUTCDATETIME(), SYSUTCDATETIME());
+WHEN NOT MATCHED THEN INSERT (StockCode, StockName, ExchangeId, SecurityType, MarketType, ListingDate, IsActive, IsST, CreatedTime, UpdatedTime)
+VALUES (source.StockCode, source.StockName, source.ExchangeId, source.SecurityType, source.MarketType, source.ListingDate, source.IsActive, source.IsST, SYSUTCDATETIME(), SYSUTCDATETIME());
 """;
 						await connection.ExecuteAsync(new CommandDefinition(sql, new { StocksJson = JsonSerializer.Serialize(stocks) }, transaction, cancellationToken: cancellationToken));
 						succeeded = stocks.Count;

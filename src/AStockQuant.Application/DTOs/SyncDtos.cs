@@ -7,7 +7,8 @@ public sealed record StockImportDto(
 		string SecurityType,
 		string? MarketType,
 		DateOnly? ListingDate,
-		bool IsActive);
+		bool IsActive,
+		bool IsST);
 
 public sealed record DailyPriceImportDto(
 		string StockCode,

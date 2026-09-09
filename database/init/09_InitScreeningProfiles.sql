@@ -38,5 +38,8 @@ BEGIN
 
 		IF NOT EXISTS (SELECT 1 FROM Strategy.ScreeningRule WHERE ProfileId = @ProfileId AND RuleCode = 'REQUIRE_COMPLETE_FINANCIAL_DATA')
 				INSERT INTO Strategy.ScreeningRule (ProfileId, RuleCode, BoolValue) VALUES (@ProfileId, 'REQUIRE_COMPLETE_FINANCIAL_DATA', 1);
+
+		IF NOT EXISTS (SELECT 1 FROM Strategy.ScreeningRule WHERE ProfileId = @ProfileId AND RuleCode = 'EXCLUDE_ST')
+				INSERT INTO Strategy.ScreeningRule (ProfileId, RuleCode, BoolValue) VALUES (@ProfileId, 'EXCLUDE_ST', 1);
 END
 GO
