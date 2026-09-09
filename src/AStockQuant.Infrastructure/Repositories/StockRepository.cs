@@ -197,9 +197,31 @@ WHERE s.StockCode = @StockCode
         Convert.ToDecimal(row.FisherScore),
         Convert.ToDecimal(row.FinalScore));
 
-    public async Task SaveInvestmentScoreAsync(InvestmentScoreDto score, string modelCode, CancellationToken cancellationToken)
+    public async Task<ScoreExplanationDto?> GetLatestScoreExplanationAsync(string code, CancellationToken cancellationToken)
     {
         using var connection = connectionFactory.CreateConnection();
+        var score = await connection.QuerySingleOrDefaultAsync<ScoreExplanationRow>(new CommandDefinition(
+            "SELECT TOP (1) score.ScoreId, stock.StockCode, score.ScoreDate, score.FinalScore FROM Quant.InvestmentScore score INNER JOIN Basic.Stock stock ON stock.StockId = score.StockId WHERE stock.StockCode = @Code ORDER BY score.ScoreDate DESC, score.ScoreId DESC;",
+            new { Code = code }, cancellationToken: cancellationToken));
+        if (score is null) return null;
+
+        var components = await connection.QueryAsync<ScoreComponentRow>(new CommandDefinition(
+            "SELECT ModelCode, ModelScore, ComponentCode, ComponentScore FROM Quant.InvestmentScoreComponent WHERE ScoreId = @ScoreId ORDER BY ModelCode, ComponentCode;",
+            new { score.ScoreId }, cancellationToken: cancellationToken));
+        var models = components
+            .GroupBy(component => new { component.ModelCode, component.ModelScore })
+            .OrderBy(group => group.Key.ModelCode, StringComparer.Ordinal)
+            .Select(group => new ScoreModelExplanationDto(group.Key.ModelCode, group.Key.ModelScore,
+                group.Select(component => new ScoreComponentDto(component.ComponentCode, component.ComponentScore)).ToArray()))
+            .ToArray();
+        return models.Length == 0 ? null : new ScoreExplanationDto(score.StockCode, score.ScoreDate, score.FinalScore, models);
+    }
+
+    public async Task SaveInvestmentScoreAsync(InvestmentScoreDto score, string modelCode, IReadOnlyList<ScoreModelExplanationDto> explanation, CancellationToken cancellationToken)
+    {
+        using var connection = connectionFactory.CreateConnection();
+        connection.Open();
+        using var transaction = connection.BeginTransaction();
         const string sql = """
 MERGE Quant.InvestmentScore AS target
 USING (SELECT StockId FROM Basic.Stock WHERE StockCode = @StockCode) AS source
@@ -207,8 +229,9 @@ ON target.StockId = source.StockId AND target.ModelId = (SELECT TOP (1) ModelId 
 WHEN MATCHED THEN UPDATE SET BuffettScore=@BuffettScore, GrahamScore=@GrahamScore, FisherScore=@FisherScore, BaseScore=@FinalScore, FinalScore=@FinalScore
 WHEN NOT MATCHED THEN INSERT (StockId, ModelId, ScoreDate, BuffettScore, GrahamScore, FisherScore, ValuationScore, IndustryScore, RiskAdjustment, BaseScore, FinalScore, DataAsOfDate, CreatedTime)
 VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE ModelCode = @ModelCode AND IsActive = 1), @ScoreDate, @BuffettScore, @GrahamScore, @FisherScore, NULL, NULL, 0, @FinalScore, @FinalScore, @ScoreDate, SYSUTCDATETIME());
+OUTPUT inserted.ScoreId;
 """;
-        await connection.ExecuteAsync(new CommandDefinition(sql, new
+        var scoreId = await connection.ExecuteScalarAsync<long>(new CommandDefinition(sql, new
         {
             score.StockCode,
             ModelCode = modelCode,
@@ -217,7 +240,25 @@ VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE Mode
             score.GrahamScore,
             score.FisherScore,
             score.FinalScore
-        }, cancellationToken: cancellationToken));
+        }, transaction, cancellationToken: cancellationToken));
+        const string componentSql = """
+DELETE FROM Quant.InvestmentScoreComponent WHERE ScoreId = @ScoreId;
+INSERT INTO Quant.InvestmentScoreComponent (ScoreId, ModelCode, ModelScore, ComponentCode, ComponentScore)
+SELECT @ScoreId, model.ModelCode, model.ModelScore, component.ComponentCode, component.Score
+FROM OPENJSON(@ExplanationJson)
+WITH (ModelCode VARCHAR(30) '$.ModelCode', ModelScore DECIMAL(10,4) '$.Score', Components NVARCHAR(MAX) '$.Components' AS JSON) model
+CROSS APPLY OPENJSON(model.Components)
+WITH (ComponentCode VARCHAR(60) '$.ComponentCode', Score DECIMAL(10,4) '$.Score') component;
+""";
+        await connection.ExecuteAsync(new CommandDefinition(componentSql, new
+        {
+            ScoreId = scoreId,
+            ExplanationJson = System.Text.Json.JsonSerializer.Serialize(explanation)
+        }, transaction, cancellationToken: cancellationToken));
+        transaction.Commit();
     }
+
+    private sealed record ScoreExplanationRow(long ScoreId, string StockCode, DateOnly ScoreDate, decimal FinalScore);
+    private sealed record ScoreComponentRow(string ModelCode, decimal ModelScore, string ComponentCode, decimal ComponentScore);
 
 }

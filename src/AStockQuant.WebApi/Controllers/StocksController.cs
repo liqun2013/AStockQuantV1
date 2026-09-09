@@ -29,6 +29,13 @@ public sealed class StocksController(StockAnalysisService service, IScreeningSer
         return score is null ? NotFound(ApiResponse<InvestmentScoreDto>.Fail("Score was not found.")) : ApiResponse<InvestmentScoreDto>.Ok(score);
     }
 
+    [HttpGet("stocks/{code}/score/explanation")]
+    public async Task<ActionResult<ApiResponse<ScoreExplanationDto>>> GetScoreExplanation(string code, CancellationToken cancellationToken)
+    {
+        var explanation = await service.GetLatestScoreExplanationAsync(code, cancellationToken);
+        return explanation is null ? NotFound(ApiResponse<ScoreExplanationDto>.Fail("Score explanation was not found.")) : ApiResponse<ScoreExplanationDto>.Ok(explanation);
+    }
+
     [HttpGet("stocks/{code}/financial")]
     public async Task<ActionResult<ApiResponse<FinancialSnapshotDto>>> GetFinancial(string code, [FromQuery] DateOnly? asOfDate, CancellationToken cancellationToken)
     {

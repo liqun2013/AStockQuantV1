@@ -2,4 +2,7 @@ namespace AStockQuant.Application.DTOs;
 public sealed record StockDto(string Code, string Name, string ExchangeCode, DateOnly? ListingDate, bool IsActive);
 public sealed record DailyPriceDto(string StockCode, DateOnly TradeDate, decimal OpenPrice, decimal HighPrice, decimal LowPrice, decimal ClosePrice, long Volume);
 public sealed record InvestmentScoreDto(string StockCode, DateOnly ScoreDate, decimal BuffettScore, decimal GrahamScore, decimal FisherScore, decimal FinalScore);
+public sealed record ScoreComponentDto(string ComponentCode, decimal Score);
+public sealed record ScoreModelExplanationDto(string ModelCode, decimal Score, IReadOnlyList<ScoreComponentDto> Components);
+public sealed record ScoreExplanationDto(string StockCode, DateOnly ScoreDate, decimal FinalScore, IReadOnlyList<ScoreModelExplanationDto> Models);
 public sealed record FinancialSnapshotDto(string StockCode, DateOnly AsOfDate, decimal Roe, decimal Roic, decimal GrossMargin, decimal NetMargin, decimal OperatingCashFlowToNetProfit, decimal DebtAssetRatio, decimal CurrentRatio, decimal Pe, decimal Pb, decimal Eps, decimal Bvps, decimal MarketPrice, decimal RevenueGrowth3Y, decimal ProfitGrowth3Y, decimal ResearchExpenseRatio);

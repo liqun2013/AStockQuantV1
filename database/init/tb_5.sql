@@ -1,4 +1,4 @@
-/*
+﻿/*
 ====================================================
  Industry.Indicator
  行业分析指标定义
@@ -357,6 +357,39 @@ CREATE TABLE Quant.InvestmentScore
             ModelId,
             ScoreDate
         )
+);
+GO
+/*
+====================================================
+ Quant.InvestmentScoreComponent
+ 综合评分的模型与指标组件明细
+====================================================
+*/
+CREATE TABLE Quant.InvestmentScoreComponent
+(
+    ScoreComponentId BIGINT IDENTITY(1,1)
+        CONSTRAINT PK_Quant_InvestmentScoreComponent PRIMARY KEY,
+
+    ScoreId BIGINT NOT NULL,
+
+    ModelCode VARCHAR(30) NOT NULL,
+
+    ModelScore DECIMAL(10,4) NOT NULL,
+
+    ComponentCode VARCHAR(60) NOT NULL,
+
+    ComponentScore DECIMAL(10,4) NOT NULL,
+
+    CreatedTime DATETIME2(0) NOT NULL
+        CONSTRAINT DF_Quant_InvestmentScoreComponent_CreatedTime
+        DEFAULT SYSUTCDATETIME(),
+
+    CONSTRAINT FK_Quant_InvestmentScoreComponent_Score
+        FOREIGN KEY (ScoreId)
+        REFERENCES Quant.InvestmentScore(ScoreId),
+
+    CONSTRAINT UQ_Quant_InvestmentScoreComponent
+        UNIQUE (ScoreId, ModelCode, ComponentCode)
 );
 GO
 /*

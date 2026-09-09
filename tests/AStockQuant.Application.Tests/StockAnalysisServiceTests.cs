@@ -26,6 +26,8 @@ public sealed class StockAnalysisServiceTests
         var score = await service.CalculateAndSaveScoreAsync("600519", new DateOnly(2026, 8, 26));
         score.Should().NotBeNull();
         repository.SavedScore.Should().Be(score);
+        repository.SavedExplanation.Select(model => model.ModelCode).Should().Equal("BUFFETT", "GRAHAM", "FISHER");
+        repository.SavedExplanation.SelectMany(model => model.Components).Should().NotBeEmpty();
     }
 
     private sealed class InMemoryStockRepository : IStockRepository
@@ -33,13 +35,15 @@ public sealed class StockAnalysisServiceTests
         public int LastPageIndex { get; private set; }
         public int LastPageSize { get; private set; }
         public InvestmentScoreDto? SavedScore { get; private set; }
+        public IReadOnlyList<ScoreModelExplanationDto> SavedExplanation { get; private set; } = [];
         public Task<PagedResult<StockDto>> GetStocksAsync(int pageIndex, int pageSize, string? market, string? industry, CancellationToken cancellationToken) { LastPageIndex = pageIndex; LastPageSize = pageSize; return Task.FromResult(new PagedResult<StockDto>(0, [])); }
         public Task<StockDto?> GetStockAsync(string code, CancellationToken cancellationToken) => Task.FromResult<StockDto?>(new StockDto(code, "Kweichow Moutai", "SSE", null, true));
         public Task<IReadOnlyList<DailyPriceDto>> GetDailyPricesAsync(string code, DateOnly? startDate, DateOnly? endDate, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<DailyPriceDto>>([]);
         public Task<IReadOnlyList<InvestmentScoreDto>> GetRankingAsync(DateOnly scoreDate, decimal? minScore, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<InvestmentScoreDto>>([]);
         public Task<InvestmentScoreDto?> GetLatestScoreAsync(string code, CancellationToken cancellationToken) => Task.FromResult<InvestmentScoreDto?>(null);
+        public Task<ScoreExplanationDto?> GetLatestScoreExplanationAsync(string code, CancellationToken cancellationToken) => Task.FromResult<ScoreExplanationDto?>(null);
         public Task<FinancialSnapshotDto?> GetFinancialSnapshotAsync(string code, DateOnly asOfDate, CancellationToken cancellationToken) => Task.FromResult<FinancialSnapshotDto?>(new FinancialSnapshotDto(code, asOfDate, 20m, 15m, 45m, 20m, 1m, 35m, 2m, 14m, 1.1m, 2m, 10m, 15m, 20m, 18m, 8m));
-        public Task SaveInvestmentScoreAsync(InvestmentScoreDto score, string modelCode, CancellationToken cancellationToken) { SavedScore = score; return Task.CompletedTask; }
+        public Task SaveInvestmentScoreAsync(InvestmentScoreDto score, string modelCode, IReadOnlyList<ScoreModelExplanationDto> explanation, CancellationToken cancellationToken) { SavedScore = score; SavedExplanation = explanation; return Task.CompletedTask; }
     }
 
     private sealed class InMemoryScoreModelRuleRepository : IScoreModelRuleRepository

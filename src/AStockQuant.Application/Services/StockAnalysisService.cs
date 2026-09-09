@@ -20,6 +20,7 @@ public sealed class StockAnalysisService(IStockRepository repository, IScoreMode
     public Task<IReadOnlyList<DailyPriceDto>> GetDailyPricesAsync(string code, DateOnly? startDate, DateOnly? endDate, CancellationToken cancellationToken = default) => repository.GetDailyPricesAsync(code, startDate, endDate, cancellationToken);
     public Task<IReadOnlyList<InvestmentScoreDto>> GetRankingAsync(DateOnly scoreDate, decimal? minScore, CancellationToken cancellationToken = default) => repository.GetRankingAsync(scoreDate, minScore, cancellationToken);
     public Task<InvestmentScoreDto?> GetLatestScoreAsync(string code, CancellationToken cancellationToken = default) => repository.GetLatestScoreAsync(code, cancellationToken);
+    public Task<ScoreExplanationDto?> GetLatestScoreExplanationAsync(string code, CancellationToken cancellationToken = default) => repository.GetLatestScoreExplanationAsync(code, cancellationToken);
     public Task<FinancialSnapshotDto?> GetFinancialSnapshotAsync(string code, DateOnly asOfDate, CancellationToken cancellationToken = default) => repository.GetFinancialSnapshotAsync(code, asOfDate, cancellationToken);
 
     public async Task<InvestmentScoreDto?> CalculateAndSaveScoreAsync(string code, DateOnly asOfDate, CancellationToken cancellationToken = default)
@@ -29,13 +30,26 @@ public sealed class StockAnalysisService(IStockRepository repository, IScoreMode
         var weights = await GetWeightsAsync(cancellationToken);
         var score = calculator.Calculate(ToDomain(snapshot), weights);
         var dto = new InvestmentScoreDto(score.StockCode, score.ScoreDate, score.BuffettScore, score.GrahamScore, score.FisherScore, score.FinalScore);
-        await repository.SaveInvestmentScoreAsync(dto, ModelCode, cancellationToken);
+        await repository.SaveInvestmentScoreAsync(dto, ModelCode,
+        [
+            ToExplanation("BUFFETT", score.Buffett),
+            ToExplanation("GRAHAM", score.Graham),
+            ToExplanation("FISHER", score.Fisher)
+        ], cancellationToken);
         return dto;
     }
 
     private static FinancialSnapshot ToDomain(FinancialSnapshotDto d) => new(d.StockCode, d.AsOfDate, d.Roe, d.Roic, d.GrossMargin, d.NetMargin, d.OperatingCashFlowToNetProfit, d.DebtAssetRatio, d.CurrentRatio, d.Pe, d.Pb, d.Eps, d.Bvps, d.MarketPrice, d.RevenueGrowth3Y, d.ProfitGrowth3Y, d.ResearchExpenseRatio);
 
     private const string ModelCode = "VALUE_INVESTMENT";
+
+    private static ScoreModelExplanationDto ToExplanation(string modelCode, ScoreResult result) => new(
+        modelCode,
+        result.Score,
+        result.Components
+            .OrderBy(component => component.Key, StringComparer.Ordinal)
+            .Select(component => new ScoreComponentDto(component.Key, component.Value))
+            .ToArray());
 
     private async Task<CompositeScoreWeights> GetWeightsAsync(CancellationToken cancellationToken)
     {
