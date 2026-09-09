@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddHttpClient<IAkToolsClient, AkToolsClient>(client => client.BaseAddress = new Uri(akToolsUrl));
         return services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>()
             .AddScoped<IStockRepository, StockRepository>()
+            .AddScoped<IScreeningRepository, ScreeningRepository>()
             .AddScoped<IScoreModelRuleRepository, ScoreModelRuleRepository>()
             .AddScoped<IMarketDataRepository, MarketDataRepository>()
             .AddScoped<IMarketDataProvider, AkToolsMarketDataProvider>()

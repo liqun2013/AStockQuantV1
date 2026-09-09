@@ -5,7 +5,7 @@ using Dapper;
 
 namespace AStockQuant.Infrastructure.Repositories;
 
-public sealed class StockRepository(ISqlConnectionFactory connectionFactory) : IStockRepository
+public sealed class StockRepository(ISqlConnectionFactory connectionFactory, IScreeningRepository screeningRepository) : IStockRepository
 {
     public async Task<PagedResult<StockDto>> GetStocksAsync(int pageIndex, int pageSize, string? market, string? industry, CancellationToken cancellationToken)
     {
@@ -90,72 +90,13 @@ ORDER BY p.TradeDate;
     public async Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(string profileCode, string version, DateOnly? scoreDate, CancellationToken cancellationToken)
     {
         using var connection = connectionFactory.CreateConnection();
-
-        const string profileSql = """
-SELECT TOP (1) ProfileId, ScoreModelId
-FROM Strategy.ScreeningProfile
-WHERE ProfileCode = @ProfileCode
-  AND Version = @Version
-  AND IsActive = 1;
-""";
-        var profile = await connection.QuerySingleOrDefaultAsync(new CommandDefinition(profileSql, new
-        {
-            ProfileCode = profileCode,
-            Version = version
-        }, cancellationToken: cancellationToken));
+        var profile = await screeningRepository.GetProfileByCodeAndVersionAsync(profileCode, version, cancellationToken);
         if (profile is null)
         {
             throw new InvalidOperationException($"Screening profile '{profileCode}@{version}' not found or inactive.");
         }
 
-        var modelId = Convert.ToInt32(profile.ScoreModelId);
-        var topN = 100;
-        var minimumListingYears = 3;
-        var minimumFisherScore = 0m;
-        var minimumBuffettScore = 0m;
-        var minimumGrahamScore = 0m;
-        var requireCompleteFinancialData = false;
-
-        const string ruleSql = """
-SELECT RuleCode, NumericValue, BoolValue
-FROM Strategy.ScreeningRule
-WHERE ProfileId = @ProfileId;
-""";
-        var rules = await connection.QueryAsync(new CommandDefinition(ruleSql, new
-        {
-            ProfileId = Convert.ToInt32(profile.ProfileId)
-        }, cancellationToken: cancellationToken));
-
-        foreach (var rule in rules)
-        {
-            var ruleCode = Convert.ToString(rule.RuleCode);
-            if (string.IsNullOrWhiteSpace(ruleCode))
-            {
-                continue;
-            }
-
-            switch (ruleCode)
-            {
-                case "TOP_N":
-                    if (rule.NumericValue is not null) topN = Convert.ToInt32(rule.NumericValue);
-                    break;
-                case "MINIMUM_LISTING_YEARS":
-                    if (rule.NumericValue is not null) minimumListingYears = Convert.ToInt32(rule.NumericValue);
-                    break;
-                case "MINIMUM_FISHER_SCORE":
-                    if (rule.NumericValue is not null) minimumFisherScore = Convert.ToDecimal(rule.NumericValue);
-                    break;
-                case "MINIMUM_BUFFETT_SCORE":
-                    if (rule.NumericValue is not null) minimumBuffettScore = Convert.ToDecimal(rule.NumericValue);
-                    break;
-                case "MINIMUM_GRAHAM_SCORE":
-                    if (rule.NumericValue is not null) minimumGrahamScore = Convert.ToDecimal(rule.NumericValue);
-                    break;
-                case "REQUIRE_COMPLETE_FINANCIAL_DATA":
-                    if (rule.BoolValue is not null) requireCompleteFinancialData = Convert.ToBoolean(rule.BoolValue);
-                    break;
-            }
-        }
+        var criteria = ParseScreeningCriteria(profile.Rules);
 
         var targetScoreDate = (scoreDate ?? DateOnly.FromDateTime(DateTime.UtcNow)).ToDateTime(TimeOnly.MinValue);
         const string sql = """
@@ -212,14 +153,14 @@ ORDER BY score.FinalScore DESC, stock.StockCode;
 """;
         return (await connection.QueryAsync<StockCandidateDto>(new CommandDefinition(sql, new
         {
-            ModelId = modelId,
+            ModelId = profile.ScoreModelId,
             ScoreDate = targetScoreDate,
-            TopN = topN,
-            MinimumListingYears = minimumListingYears,
-            MinimumFisherScore = minimumFisherScore,
-            MinimumBuffettScore = minimumBuffettScore,
-            MinimumGrahamScore = minimumGrahamScore,
-            RequireCompleteFinancialData = requireCompleteFinancialData
+            criteria.TopN,
+            criteria.MinimumListingYears,
+            criteria.MinimumFisherScore,
+            criteria.MinimumBuffettScore,
+            criteria.MinimumGrahamScore,
+            criteria.RequireCompleteFinancialData
         }, cancellationToken: cancellationToken))).AsList();
     }
 
@@ -355,4 +296,78 @@ VALUES (source.StockId, (SELECT TOP (1) ModelId FROM Quant.ScoreModel WHERE Mode
             score.FinalScore
         }, cancellationToken: cancellationToken));
     }
+
+    private static ScreeningCriteria ParseScreeningCriteria(IReadOnlyList<AStockQuant.Application.Screening.ScreeningRule> rules)
+    {
+        var configuredRules = rules.ToDictionary(rule => rule.RuleCode, StringComparer.OrdinalIgnoreCase);
+        const string topNCode = "TOP_N";
+        const string minimumListingYearsCode = "MINIMUM_LISTING_YEARS";
+        const string minimumFisherScoreCode = "MINIMUM_FISHER_SCORE";
+        const string minimumBuffettScoreCode = "MINIMUM_BUFFETT_SCORE";
+        const string minimumGrahamScoreCode = "MINIMUM_GRAHAM_SCORE";
+        const string requireCompleteFinancialDataCode = "REQUIRE_COMPLETE_FINANCIAL_DATA";
+
+        var allowedRuleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            topNCode,
+            minimumListingYearsCode,
+            minimumFisherScoreCode,
+            minimumBuffettScoreCode,
+            minimumGrahamScoreCode,
+            requireCompleteFinancialDataCode
+        };
+
+        var unknownRule = configuredRules.Keys.FirstOrDefault(ruleCode => !allowedRuleCodes.Contains(ruleCode));
+        if (unknownRule is not null)
+        {
+            throw new InvalidOperationException($"Unsupported screening rule '{unknownRule}'.");
+        }
+
+        decimal GetNumeric(string ruleCode, decimal minimum, decimal maximum)
+        {
+            if (!configuredRules.TryGetValue(ruleCode, out var rule) || rule.NumericValue is null || rule.BoolValue is not null || rule.StringValue is not null)
+            {
+                throw new InvalidOperationException($"Screening rule '{ruleCode}' must define one numeric value.");
+            }
+
+            if (rule.NumericValue < minimum || rule.NumericValue > maximum)
+            {
+                throw new InvalidOperationException($"Screening rule '{ruleCode}' must be between {minimum} and {maximum}.");
+            }
+
+            return rule.NumericValue.Value;
+        }
+
+        var topN = GetNumeric(topNCode, 1m, 500m);
+        var minimumListingYears = GetNumeric(minimumListingYearsCode, 0m, 50m);
+        var minimumFisherScore = GetNumeric(minimumFisherScoreCode, 0m, 100m);
+        var minimumBuffettScore = GetNumeric(minimumBuffettScoreCode, 0m, 100m);
+        var minimumGrahamScore = GetNumeric(minimumGrahamScoreCode, 0m, 100m);
+
+        if (topN != decimal.Truncate(topN) || minimumListingYears != decimal.Truncate(minimumListingYears))
+        {
+            throw new InvalidOperationException("TOP_N and MINIMUM_LISTING_YEARS must be whole numbers.");
+        }
+
+        if (!configuredRules.TryGetValue(requireCompleteFinancialDataCode, out var requireCompleteFinancialDataRule) || requireCompleteFinancialDataRule.BoolValue is null || requireCompleteFinancialDataRule.NumericValue is not null || requireCompleteFinancialDataRule.StringValue is not null)
+        {
+            throw new InvalidOperationException($"Screening rule '{requireCompleteFinancialDataCode}' must define one boolean value.");
+        }
+
+        return new ScreeningCriteria(
+            decimal.ToInt32(topN),
+            decimal.ToInt32(minimumListingYears),
+            minimumFisherScore,
+            minimumBuffettScore,
+            minimumGrahamScore,
+            requireCompleteFinancialDataRule.BoolValue.Value);
+    }
+
+    private sealed record ScreeningCriteria(
+        int TopN,
+        int MinimumListingYears,
+        decimal MinimumFisherScore,
+        decimal MinimumBuffettScore,
+        decimal MinimumGrahamScore,
+        bool RequireCompleteFinancialData);
 }
