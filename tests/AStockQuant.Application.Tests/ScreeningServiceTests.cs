@@ -11,7 +11,7 @@ public sealed class ScreeningServiceTests
 		[Fact]
 		public async Task GetCandidatesAsync_ReturnsOnlySelectedStocksInScoreOrder()
 		{
-				var service = new ScreeningService(new FakeScreeningRepository());
+				var service = new ScreeningService(new FakeScreeningRepository(), new FakeIndustryOverrideService());
 
 				var candidates = await service.GetCandidatesAsync("VALUE_QUALITY", "V1.0", new DateOnly(2026, 8, 26));
 
@@ -34,5 +34,10 @@ public sealed class ScreeningServiceTests
 				]);
 
 				private static ScreeningContext Create(string code, decimal score, bool isSt) => new(1, code, code, null, null, new DateOnly(2026, 8, 26), new DateOnly(2020, 1, 1), new DateOnly(2025, 12, 31), 70m, 60m, 80m, score, true, isSt, true);
+		}
+
+		private sealed class FakeIndustryOverrideService : IIndustryOverrideService
+		{
+				public Task<IndustryRuleSet> GetRuleSetAsync(int scoreModelId, IReadOnlyCollection<string> industryCodes, CancellationToken cancellationToken = default) => Task.FromResult(new IndustryRuleSet([]));
 		}
 }

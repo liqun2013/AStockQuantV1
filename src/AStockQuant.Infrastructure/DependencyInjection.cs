@@ -1,4 +1,5 @@
 using AStockQuant.Application.Interfaces;
+using AStockQuant.Application.Services;
 using AStockQuant.Infrastructure.Persistence;
 using AStockQuant.Infrastructure.Repositories;
 using AStockQuant.Infrastructure.AKTools;
@@ -14,6 +15,8 @@ public static class DependencyInjection
         return services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>()
             .AddScoped<IStockRepository, StockRepository>()
             .AddScoped<IScreeningRepository, ScreeningRepository>()
+            .AddScoped<IIndustryOverrideRepository, IndustryOverrideRepository>()
+            .AddScoped<IIndustryOverrideService, IndustryOverrideService>()
             .AddScoped<IScoreModelRuleRepository, ScoreModelRuleRepository>()
             .AddScoped<IMarketDataRepository, MarketDataRepository>()
             .AddScoped<IMarketDataProvider, AkToolsMarketDataProvider>()

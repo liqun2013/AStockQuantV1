@@ -46,6 +46,7 @@ public sealed class ScreeningProfile
 		public decimal MinimumFinalScore { get; }
 		public bool RequireCompleteFinancialData { get; }
 		public bool ExcludeST { get; }
+		public IReadOnlyList<ScreeningRule> Rules => rules.Values.ToArray();
 
 		public ScreeningDecision Decide(ScreeningContext context)
 		{

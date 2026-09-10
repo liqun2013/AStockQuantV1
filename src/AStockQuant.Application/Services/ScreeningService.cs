@@ -3,7 +3,7 @@ using AStockQuant.Application.Interfaces;
 
 namespace AStockQuant.Application.Services;
 
-public sealed class ScreeningService(IScreeningRepository repository) : IScreeningService
+public sealed class ScreeningService(IScreeningRepository repository, IIndustryOverrideService industryOverrideService) : IScreeningService
 {
 		public async Task<IReadOnlyList<StockCandidateDto>> GetCandidatesAsync(string profileCode, string version, DateOnly? scoreDate, CancellationToken cancellationToken = default)
 		{
@@ -11,9 +11,14 @@ public sealed class ScreeningService(IScreeningRepository repository) : IScreeni
 						?? throw new InvalidOperationException($"Screening profile '{profileCode}@{version}' not found or inactive.");
 				var targetScoreDate = scoreDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 				var contexts = await repository.GetCandidateContextsAsync(profile.ScoreModelId, targetScoreDate, cancellationToken);
+				var ruleSet = await industryOverrideService.GetRuleSetAsync(profile.ScoreModelId, contexts
+						.Select(context => context.IndustryCode)
+						.Where(industryCode => !string.IsNullOrWhiteSpace(industryCode))
+						.Select(industryCode => industryCode!)
+						.ToArray(), cancellationToken);
 
 				return contexts
-						.Select(profile.Decide)
+						.Select(context => ruleSet.GetEffectiveProfile(profile, context.IndustryCode).Decide(context))
 						.Where(decision => decision.IsSelected)
 						.OrderByDescending(decision => decision.Context.FinalScore)
 						.ThenBy(decision => decision.Context.StockCode, StringComparer.Ordinal)
