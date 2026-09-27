@@ -54,18 +54,18 @@ public sealed class FinancialIndicatorRepository(ISqlConnectionFactory connectio
 		SELECT
 				ReportId,
 				StockId,
-				NULLIF(NetProfit, 0) / NULLIF((TotalEquity + PreviousEquity) / 2, 0) * 100 AS ROE,
-				NULLIF(NetProfit, 0) / NULLIF(TotalAssets - TotalLiabilities, 0) * 100 AS ROIC,
-				NULLIF(GrossProfit, 0) / NULLIF(Revenue, 0) * 100 AS GrossMargin,
-				NULLIF(OperatingProfit, 0) / NULLIF(Revenue, 0) * 100 AS OperatingMargin,
-				NULLIF(NetProfit, 0) / NULLIF(Revenue, 0) * 100 AS NetMargin,
-				NULLIF(TotalLiabilities, 0) / NULLIF(TotalAssets, 0) * 100 AS DebtRatio,
-				NULLIF(CurrentAssets, 0) / NULLIF(CurrentLiabilities, 0) AS CurrentRatio,
-				NULLIF(Revenue - PreviousRevenue, 0) / NULLIF(ABS(PreviousRevenue), 0) * 100 AS RevenueGrowth,
-				NULLIF(NetProfit - PreviousNetProfit, 0) / NULLIF(ABS(PreviousNetProfit), 0) * 100 AS NetProfitGrowth,
-				NULLIF(OperatingCashFlow, 0) / NULLIF(NetProfit, 0) AS OperatingCashFlowToNetProfit,
+				NetProfit / NULLIF((TotalEquity + PreviousEquity) / 2, 0) * 100 AS ROE,
+				NetProfit / NULLIF(TotalAssets - TotalLiabilities, 0) * 100 AS ROIC,
+				GrossProfit / NULLIF(Revenue, 0) * 100 AS GrossMargin,
+				OperatingProfit / NULLIF(Revenue, 0) * 100 AS OperatingMargin,
+				NetProfit / NULLIF(Revenue, 0) * 100 AS NetMargin,
+				TotalLiabilities / NULLIF(TotalAssets, 0) * 100 AS DebtRatio,
+				CurrentAssets / NULLIF(CurrentLiabilities, 0) AS CurrentRatio,
+				(Revenue - PreviousRevenue) / NULLIF(ABS(PreviousRevenue), 0) * 100 AS RevenueGrowth,
+				(NetProfit - PreviousNetProfit) / NULLIF(ABS(PreviousNetProfit), 0) * 100 AS NetProfitGrowth,
+				OperatingCashFlow / NULLIF(NetProfit, 0) AS OperatingCashFlowToNetProfit,
 				OperatingCashFlow - CapitalExpenditure AS FreeCashFlow,
-				NULLIF(OperatingCashFlow - CapitalExpenditure, 0) / NULLIF(Revenue, 0) * 100 AS FreeCashFlowMargin
+				(OperatingCashFlow - CapitalExpenditure) / NULLIF(Revenue, 0) * 100 AS FreeCashFlowMargin
 		FROM PreviousData
 )
 MERGE Finance.FinancialIndicator AS target

@@ -7,7 +7,8 @@ namespace AStockQuant.Application.Services;
 
 public sealed class StockAnalysisService(IStockRepository repository, IScoreModelRuleRepository ruleRepository)
 {
-    private readonly CompositeScoreCalculator calculator = new();
+    private readonly RuleBasedScoreCalculator calculator = new();
+    private readonly CompositeScoreCalculator compositeCalculator = new();
 
     public Task<PagedResult<StockDto>> GetStocksAsync(int pageIndex, int pageSize, string? market = null, string? industry = null, CancellationToken cancellationToken = default)
     {
@@ -28,7 +29,16 @@ public sealed class StockAnalysisService(IStockRepository repository, IScoreMode
         var snapshot = await repository.GetFinancialSnapshotAsync(code, asOfDate, cancellationToken);
         if (snapshot is null) return null;
         var weights = await GetWeightsAsync(cancellationToken);
-        var score = calculator.Calculate(ToDomain(snapshot), weights);
+        var buffettRules = await ruleRepository.GetIndicatorRulesAsync("BUFFETT", cancellationToken);
+        var grahamRules = await ruleRepository.GetIndicatorRulesAsync("GRAHAM", cancellationToken);
+        var fisherRules = await ruleRepository.GetIndicatorRulesAsync("FISHER", cancellationToken);
+        var score = compositeCalculator.Calculate(
+            snapshot.StockCode,
+            snapshot.AsOfDate,
+            calculator.Calculate(GetIndicatorValues("BUFFETT", snapshot), buffettRules),
+            calculator.Calculate(GetIndicatorValues("GRAHAM", snapshot), grahamRules),
+            calculator.Calculate(GetIndicatorValues("FISHER", snapshot), fisherRules),
+            weights);
         var dto = new InvestmentScoreDto(score.StockCode, score.ScoreDate, score.BuffettScore, score.GrahamScore, score.FisherScore, score.FinalScore);
         await repository.SaveInvestmentScoreAsync(dto, ModelCode,
         [
@@ -39,7 +49,31 @@ public sealed class StockAnalysisService(IStockRepository repository, IScoreMode
         return dto;
     }
 
-    private static FinancialSnapshot ToDomain(FinancialSnapshotDto d) => new(d.StockCode, d.AsOfDate, d.Roe, d.Roic, d.GrossMargin, d.NetMargin, d.OperatingCashFlowToNetProfit, d.DebtAssetRatio, d.CurrentRatio, d.Pe, d.Pb, d.Eps, d.Bvps, d.MarketPrice, d.RevenueGrowth3Y, d.ProfitGrowth3Y, d.ResearchExpenseRatio);
+    private static IReadOnlyDictionary<string, decimal?> GetIndicatorValues(string modelCode, FinancialSnapshotDto snapshot) => modelCode switch
+    {
+        "BUFFETT" => new Dictionary<string, decimal?>
+        {
+            ["B01"] = snapshot.LongTermRoe,
+            ["B02"] = snapshot.FreeCashFlowMargin,
+            ["B03"] = snapshot.ProfitabilityStability5Y,
+            ["B04"] = snapshot.DebtAssetRatio
+        },
+        "GRAHAM" => new Dictionary<string, decimal?>
+        {
+            ["G01"] = snapshot.Pe,
+            ["G02"] = snapshot.Pb,
+            ["G03"] = snapshot.DividendYield,
+            ["G04"] = snapshot.DebtAssetRatio,
+            ["G05"] = snapshot.ProfitabilityStability5Y
+        },
+        "FISHER" => new Dictionary<string, decimal?>
+        {
+            ["F01"] = snapshot.RevenueGrowth3Y,
+            ["F02"] = snapshot.ProfitGrowth3Y,
+            ["F03"] = snapshot.LongTermRoe
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(modelCode), modelCode, "Unknown investment model code.")
+    };
 
     private const string ModelCode = "VALUE_INVESTMENT";
 

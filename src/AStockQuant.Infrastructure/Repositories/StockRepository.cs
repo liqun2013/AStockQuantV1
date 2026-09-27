@@ -126,9 +126,12 @@ SELECT
     pe.EarningsPerShare AS Eps,
     pb.BookValuePerShare AS Bvps,
     mv.CurrentPrice AS MarketPrice,
-    i.RevenueGrowth AS RevenueGrowth3Y,
-    i.NetProfitGrowth AS ProfitGrowth3Y,
-    CAST(0 AS DECIMAL(18, 6)) AS ResearchExpenseRatio
+    growth.RevenueCagr3Y AS RevenueGrowth3Y,
+    growth.ProfitCagr3Y AS ProfitGrowth3Y,
+    i.FreeCashFlowMargin,
+    history.LongTermRoe,
+    history.ProfitabilityStability5Y,
+    CASE WHEN mv.CurrentPrice > 0 THEN dividends.AnnualDividendPerShare / mv.CurrentPrice * 100 END AS DividendYield
 FROM Basic.Stock s
 OUTER APPLY
 (
@@ -140,6 +143,75 @@ OUTER APPLY
     ORDER BY r.ReportPeriod DESC, r.PublishDate DESC, r.VersionNo DESC
 ) r
 LEFT JOIN Finance.FinancialIndicator i ON i.ReportId = r.ReportId
+OUTER APPLY
+(
+    SELECT
+        CASE WHEN COUNT(annual.ROE) = 5 THEN AVG(annual.ROE) END AS LongTermRoe,
+        CASE WHEN COUNT(annual.NetProfit) = 5
+             THEN AVG(CASE WHEN annual.NetProfit > 0 THEN CAST(1 AS DECIMAL(10, 4)) ELSE CAST(0 AS DECIMAL(10, 4)) END)
+        END AS ProfitabilityStability5Y
+    FROM
+    (
+        SELECT TOP (5)
+               income.NetProfit / NULLIF((balance.TotalEquity + priorBalance.TotalEquity) / 2, 0) * 100 AS ROE,
+               income.NetProfit
+        FROM
+        (
+            SELECT report.ReportId, report.ReportPeriod,
+                   ROW_NUMBER() OVER (PARTITION BY YEAR(report.ReportPeriod) ORDER BY report.PublishDate DESC, report.VersionNo DESC) AS AnnualVersion
+            FROM Finance.FinancialReport report
+            WHERE report.StockId = s.StockId
+              AND report.ReportType = 'YEAR'
+              AND report.ReportPeriod <= @AsOfDate
+              AND report.PublishDate <= @AsOfDate
+        ) annualReport
+        LEFT JOIN Finance.IncomeStatement income ON income.ReportId = annualReport.ReportId
+        LEFT JOIN Finance.BalanceSheet balance ON balance.ReportId = annualReport.ReportId
+        OUTER APPLY
+        (
+            SELECT TOP (1) priorBalance.TotalEquity
+            FROM Finance.FinancialReport priorReport
+            INNER JOIN Finance.BalanceSheet priorBalance ON priorBalance.ReportId = priorReport.ReportId
+            WHERE priorReport.StockId = s.StockId
+              AND priorReport.ReportType = 'YEAR'
+              AND YEAR(priorReport.ReportPeriod) = YEAR(annualReport.ReportPeriod) - 1
+              AND priorReport.PublishDate <= @AsOfDate
+            ORDER BY priorReport.PublishDate DESC, priorReport.VersionNo DESC
+        ) priorBalance
+        WHERE annualReport.AnnualVersion = 1
+        ORDER BY annualReport.ReportPeriod DESC
+    ) annual
+) history
+OUTER APPLY
+(
+    SELECT
+        CASE WHEN COUNT(annual.Revenue) = 4 AND MIN(annual.Revenue) > 0
+             THEN (POWER(MAX(CASE WHEN annual.Position = 1 THEN CAST(annual.Revenue AS FLOAT) END) /
+                         NULLIF(MAX(CASE WHEN annual.Position = 4 THEN CAST(annual.Revenue AS FLOAT) END), 0), 1.0 / 3.0) - 1) * 100
+        END AS RevenueCagr3Y,
+        CASE WHEN COUNT(annual.NetProfit) = 4 AND MIN(annual.NetProfit) > 0
+             THEN (POWER(MAX(CASE WHEN annual.Position = 1 THEN CAST(annual.NetProfit AS FLOAT) END) /
+                         NULLIF(MAX(CASE WHEN annual.Position = 4 THEN CAST(annual.NetProfit AS FLOAT) END), 0), 1.0 / 3.0) - 1) * 100
+        END AS ProfitCagr3Y
+    FROM
+    (
+        SELECT reportValues.Revenue, reportValues.NetProfit,
+               ROW_NUMBER() OVER (ORDER BY reportValues.ReportPeriod DESC) AS Position
+        FROM
+        (
+            SELECT report.ReportPeriod, income.Revenue, income.NetProfit,
+                   ROW_NUMBER() OVER (PARTITION BY YEAR(report.ReportPeriod) ORDER BY report.PublishDate DESC, report.VersionNo DESC) AS AnnualVersion
+            FROM Finance.FinancialReport report
+            LEFT JOIN Finance.IncomeStatement income ON income.ReportId = report.ReportId
+            WHERE report.StockId = s.StockId
+              AND report.ReportType = 'YEAR'
+              AND report.ReportPeriod <= @AsOfDate
+              AND report.PublishDate <= @AsOfDate
+        ) reportValues
+        WHERE reportValues.AnnualVersion = 1
+    ) annual
+    WHERE annual.Position <= 4
+) growth
 OUTER APPLY
 (
     SELECT TOP (1) p.PE, p.EarningsPerShare
@@ -161,6 +233,14 @@ OUTER APPLY
     WHERE v.StockId = s.StockId AND v.TradeDate <= @AsOfDate
     ORDER BY v.TradeDate DESC
 ) mv
+OUTER APPLY
+(
+    SELECT SUM(dividend.CashDividendPerShare) AS AnnualDividendPerShare
+    FROM Finance.Dividend dividend
+    WHERE dividend.StockId = s.StockId
+      AND dividend.ExDividendDate > DATEADD(YEAR, -1, @AsOfDate)
+      AND dividend.ExDividendDate <= @AsOfDate
+) dividends
 WHERE s.StockCode = @StockCode
   AND r.ReportId IS NOT NULL;
 """;
@@ -172,22 +252,27 @@ WHERE s.StockCode = @StockCode
         return row is null ? null : new FinancialSnapshotDto(
             (string)row.StockCode,
             DateOnly.FromDateTime(Convert.ToDateTime(row.AsOfDate)),
-            Convert.ToDecimal(row.Roe),
-            Convert.ToDecimal(row.Roic),
-            Convert.ToDecimal(row.GrossMargin),
-            Convert.ToDecimal(row.NetMargin),
-            Convert.ToDecimal(row.OperatingCashFlowToNetProfit),
-            Convert.ToDecimal(row.DebtAssetRatio),
-            Convert.ToDecimal(row.CurrentRatio),
-            Convert.ToDecimal(row.PE),
-            Convert.ToDecimal(row.PB),
-            Convert.ToDecimal(row.Eps),
-            Convert.ToDecimal(row.Bvps),
-            Convert.ToDecimal(row.MarketPrice),
-            Convert.ToDecimal(row.RevenueGrowth3Y),
-            Convert.ToDecimal(row.ProfitGrowth3Y),
-            Convert.ToDecimal(row.ResearchExpenseRatio));
+            ToNullableDecimal(row.Roe),
+            ToNullableDecimal(row.Roic),
+            ToNullableDecimal(row.GrossMargin),
+            ToNullableDecimal(row.NetMargin),
+            ToNullableDecimal(row.OperatingCashFlowToNetProfit),
+            ToNullableDecimal(row.DebtAssetRatio),
+            ToNullableDecimal(row.CurrentRatio),
+            ToNullableDecimal(row.PE),
+            ToNullableDecimal(row.PB),
+            ToNullableDecimal(row.Eps),
+            ToNullableDecimal(row.Bvps),
+            ToNullableDecimal(row.MarketPrice),
+            ToNullableDecimal(row.RevenueGrowth3Y),
+            ToNullableDecimal(row.ProfitGrowth3Y),
+            ToNullableDecimal(row.FreeCashFlowMargin),
+            ToNullableDecimal(row.LongTermRoe),
+            ToNullableDecimal(row.ProfitabilityStability5Y),
+            ToNullableDecimal(row.DividendYield));
     }
+
+    private static decimal? ToNullableDecimal(object? value) => value is null or DBNull ? null : Convert.ToDecimal(value);
 
     private static InvestmentScoreDto ToInvestmentScore(dynamic row) => new(
         (string)row.StockCode,

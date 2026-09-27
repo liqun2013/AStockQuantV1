@@ -16,11 +16,18 @@ public sealed class ScoreCalculatorTests
     }
 
     [Fact]
-    public void CompositeCalculator_UsesDeterministicWeightedScore()
+    public void CompositeCalculator_CombinesRuleBasedModelScores()
     {
         var weights = new CompositeScoreWeights(0.40m, 0.20m, 0.40m);
-        var score = new CompositeScoreCalculator().Calculate(CreateExcellentSnapshot(), weights);
-        score.FinalScore.Should().Be(Math.Round(score.BuffettScore * weights.Buffett + score.GrahamScore * weights.Graham + score.FisherScore * weights.Fisher, 4, MidpointRounding.AwayFromZero));
+        var score = new CompositeScoreCalculator().Calculate(
+            "600519",
+            new DateOnly(2026, 8, 26),
+            new ScoreResult(90m, "Excellent", new Dictionary<string, decimal>()),
+            new ScoreResult(60m, "Good", new Dictionary<string, decimal>()),
+            new ScoreResult(80m, "Good", new Dictionary<string, decimal>()),
+            weights);
+
+        score.FinalScore.Should().Be(80m);
     }
 
     [Fact]
@@ -71,6 +78,25 @@ public sealed class ScoreCalculatorTests
     }
 
     [Fact]
+    public void FinancialMetricCalculator_PreservesValidZeroMetrics()
+    {
+        var result = new FinancialMetricCalculator().Calculate(new FinancialMetricInput(
+            100m, 100m, 0m, 0m, 100m, 100m, 0m, 100m, 0m, 0m, 20m, 0m, 0m));
+
+        result.Roe.Should().Be(0m);
+        result.GrossMargin.Should().Be(0m);
+        result.DebtAssetRatio.Should().Be(0m);
+        result.CurrentRatio.Should().Be(0m);
+        result.RevenueGrowth.Should().Be(0m);
+        result.FreeCashFlowMargin.Should().Be(0m);
+
+        var unchangedProfit = new FinancialMetricCalculator().Calculate(new FinancialMetricInput(
+            100m, 100m, 10m, 10m, 100m, 100m, 0m, 100m, 0m, 0m, 20m, 0m, 0m));
+
+        unchangedProfit.NetProfitGrowth.Should().Be(0m);
+    }
+
+    [Fact]
     public void RuleBasedScoreCalculator_UsesDatabaseRuleBoundaries()
     {
         var rules = new[]
@@ -100,6 +126,23 @@ public sealed class ScoreCalculatorTests
             rules);
 
         result.Score.Should().Be(75m);
+    }
+
+    [Fact]
+    public void RuleBasedScoreCalculator_SkipsMissingIndicatorValues()
+    {
+        var rules = new[]
+        {
+            new InvestmentIndicatorRule("B01", 3m, 10m, null, null, 10m, 1),
+            new InvestmentIndicatorRule("B02", 1m, 10m, null, null, 5m, 1)
+        };
+
+        var result = new RuleBasedScoreCalculator().Calculate(
+            new Dictionary<string, decimal?> { ["B01"] = null, ["B02"] = 100m },
+            rules);
+
+        result.Score.Should().Be(50m);
+        result.Components.Should().ContainSingle().Which.Key.Should().Be("B02");
     }
 
     private static FinancialSnapshot CreateExcellentSnapshot() => new("600519", new DateOnly(2026, 8, 26), 25m, 18m, 55m, 30m, 1.2m, 25m, 2.5m, 15m, 1.2m, 2m, 12m, 18m, 25m, 22m, 10m);
